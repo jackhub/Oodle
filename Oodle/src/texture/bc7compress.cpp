@@ -95,6 +95,7 @@ On output (canonicalize/emit) the subset linear order is scattered back out to b
 #endif
 
 //#define SCALAR_PARANOIA // debug only: checks (some) SIMD kernels against scalar ones, checks for exact match
+//#define PCA_REFACTOR
 
 #if defined(SCALAR_PARANOIA) && defined(__RADRELEASE__)
 #pragma warning("SCALAR_PARANOIA on in release build!")
@@ -3331,10 +3332,10 @@ static void bc7enc_refine_scale_selectors(BC7SubsetState *st, const BC7SubsetInp
 	}
 }
 
-static void scalar_calc_subset_pca3(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void scalar_calc_subset_mean_covar3(float mean[4], float covar[8], const BC7SubsetInput *in)
 {
-	float m0 = 0.0f, m1 = 0.0f, m2 = 0.0f, m3 = 0.0f;
-	float cov0 = 0.0f, cov1 = 0.0f, cov2 = 0.0f, cov3 = 0.0f, cov4 = 0.0f, cov5 = 0.0f;
+	float m[4] = {};
+	float cov[6] = {};
 
 	// Determine the covariance matrix for this subset
 	// Start with vanilla sum-of-squares
@@ -3344,37 +3345,45 @@ static void scalar_calc_subset_pca3(float mean[4], float pca[4], const BC7Subset
 		float a1 = in->pixels[i*4+1];
 		float a2 = in->pixels[i*4+2];
 		float a3 = in->pixels[i*4+3];
-		m0 += a0;
-		m1 += a1;
-		m2 += a2;
-		m3 += a3;
-		cov0 += a0 * a0;
-		cov1 += a0 * a1;
-		cov2 += a0 * a2;
-		cov3 += a1 * a1;
-		cov4 += a1 * a2;
-		cov5 += a2 * a2;
+		m[0] += a0;
+		m[1] += a1;
+		m[2] += a2;
+		m[3] += a3;
+		cov[0] += a0 * a0; // rr
+		cov[1] += a0 * a1; // rg
+		cov[2] += a0 * a2; // rb
+		cov[3] += a1 * a1; // gg
+		cov[4] += a1 * a2; // gb
+		cov[5] += a2 * a2; // bb
 	}
 
 	// Finalize mean (divide by count)
 	float sf = in->rcp_num_pixels;
-	m0 *= sf;
-	m1 *= sf;
-	m2 *= sf;
-	m3 *= sf;
-	mean[0] = m0;
-	mean[1] = m1;
-	mean[2] = m2;
-	mean[3] = m3;
+	for (int i = 0; i < 4; ++i)
+	{
+		m[i] *= sf;
+		mean[i] = m[i];
+	}
 
-	// Divide sum-of-squares matrix by count and subtract out mean*mean^T to get the actual covariance matrix
-	cov0 = cov0*sf - m0*m0;
-	cov1 = cov1*sf - m0*m1;
-	cov2 = cov2*sf - m0*m2;
-	cov3 = cov3*sf - m1*m1;
-	cov4 = cov4*sf - m1*m2;
-	cov5 = cov5*sf - m2*m2;
+	// Divide sum-of-squares matrix by count and subtract out mean*mean^T to
+	// get the actual covariance matrix
 
+	// covar[0..3] stores diagonal elements:      rr, gg, bb, and 0 (padding)
+	// covar[4..7] stores superdiagonal elements: rg, gb, rb, and 0 (padding)
+
+	covar[0] = cov[0]*sf - m[0]*m[0];	// rr
+	covar[1] = cov[3]*sf - m[1]*m[1];	// gg
+	covar[2] = cov[5]*sf - m[2]*m[2];	// bb
+	covar[3] = 0.0f;
+
+	covar[4] = cov[1]*sf - m[0]*m[1];	// rg
+	covar[5] = cov[4]*sf - m[1]*m[2];	// gb
+	covar[6] = cov[2]*sf - m[0]*m[2];	// rb
+	covar[7] = 0.0f;
+}
+
+static void scalar_calc_pca3(float pca[4], const float covar[8])
+{
 	float local_pca[3];
 	for (int i = 0; i < 3; ++i)
 		local_pca[i] = pca[i];
@@ -3386,15 +3395,22 @@ static void scalar_calc_subset_pca3(float mean[4], float pca[4], const BC7Subset
 	// iteration at all, just normalizing once at the end is fine.
 	for(int iter = 0; iter < PCA_POWER_ITERS; ++iter)
 	{
-		float x = cov0*local_pca[0] + cov1*local_pca[1] + cov2*local_pca[2];
-		float y = cov1*local_pca[0] + cov3*local_pca[1] + cov4*local_pca[2];
-		float z = cov2*local_pca[0] + cov4*local_pca[1] + cov5*local_pca[2];
+		// NOTE(fg): the vector versions store the matrix by diagonals and thus sum in a slightly
+		// unconventional order; match the order of summation here to get the same results
+
+		// covar[0..2] stores diagonal elements:      rr, gg, bb
+		// covar[4..6] stores superdiagonal elements: rg, gb, rb
+		float x = covar[0]*local_pca[0] + covar[4]*local_pca[1] + covar[6]*local_pca[2];
+		float y = covar[1]*local_pca[1] + covar[5]*local_pca[2] + covar[4]*local_pca[0];
+		float z = covar[2]*local_pca[2] + covar[6]*local_pca[0] + covar[5]*local_pca[1];
 		local_pca[0] = x;
 		local_pca[1] = y;
 		local_pca[2] = z;
 	}
 
-	float len_sq = radtex_sqr(local_pca[0]) + radtex_sqr(local_pca[1]) + radtex_sqr(local_pca[2]);
+	// NOTE(fg): our SIMD versions use sum_across which sums with 2-away, then with 1-away,
+	// so calculation order must be this:
+	float len_sq = (radtex_sqr(local_pca[0]) + radtex_sqr(local_pca[2])) + radtex_sqr(local_pca[1]);
 	if (len_sq > 0.0f)
 	{
 		float len = sqrtf(len_sq); // NOTE(fg): divide not mul by recip so we match SSE version exactly
@@ -3408,7 +3424,7 @@ static void scalar_calc_subset_pca3(float mean[4], float pca[4], const BC7Subset
 	}
 }
 
-static void scalar_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void scalar_calc_subset_mean_covar4(float mean[4], float covar[12], const BC7SubsetInput *in)
 {
 	float m[4] = {};
 	float cov[10] = {};
@@ -3425,16 +3441,16 @@ static void scalar_calc_subset_pca4(float mean[4], float pca[4], const BC7Subset
 		m[1] += a1;
 		m[2] += a2;
 		m[3] += a3;
-		cov[0] += a0 * a0;
-		cov[1] += a0 * a1;
-		cov[2] += a0 * a2;
-		cov[3] += a0 * a3;
-		cov[4] += a1 * a1;
-		cov[5] += a1 * a2;
-		cov[6] += a1 * a3;
-		cov[7] += a2 * a2;
-		cov[8] += a2 * a3;
-		cov[9] += a3 * a3;
+		cov[0] += a0 * a0; // rr
+		cov[1] += a0 * a1; // rg
+		cov[2] += a0 * a2; // rb
+		cov[3] += a0 * a3; // ra
+		cov[4] += a1 * a1; // gg
+		cov[5] += a1 * a2; // gb
+		cov[6] += a1 * a3; // ga
+		cov[7] += a2 * a2; // bb
+		cov[8] += a2 * a3; // ba
+		cov[9] += a3 * a3; // aa
 	}
 
 	// Finalize mean (divide by count)
@@ -3445,18 +3461,30 @@ static void scalar_calc_subset_pca4(float mean[4], float pca[4], const BC7Subset
 		mean[i] = m[i];
 	}
 
-	// Divide sum-of-squares matrix by count and subtract out mean*mean^T to get the actual covariance matrix
-	cov[0] = cov[0]*sf - m[0]*m[0];
-	cov[1] = cov[1]*sf - m[0]*m[1];
-	cov[2] = cov[2]*sf - m[0]*m[2];
-	cov[3] = cov[3]*sf - m[0]*m[3];
-	cov[4] = cov[4]*sf - m[1]*m[1];
-	cov[5] = cov[5]*sf - m[1]*m[2];
-	cov[6] = cov[6]*sf - m[1]*m[3];
-	cov[7] = cov[7]*sf - m[2]*m[2];
-	cov[8] = cov[8]*sf - m[2]*m[3];
-	cov[9] = cov[9]*sf - m[3]*m[3];
+	// Divide sum-of-squares matrix by count and subtract out mean*mean^T to
+	// get the actual covariance matrix
 
+	// covar[0..3]  stores diagonal elements:      rr, gg, bb, aa
+	// covar[4..7]  stores superdiagonal elements: rg, gb, ba, ra
+	// covar[8..11] is the rest:                   rb, ga, rb, ga
+	covar[0] = cov[0]*sf - m[0]*m[0];	// rr
+	covar[1] = cov[4]*sf - m[1]*m[1];	// gg
+	covar[2] = cov[7]*sf - m[2]*m[2];	// bb
+	covar[3] = cov[9]*sf - m[3]*m[3];	// aa
+
+	covar[4] = cov[1]*sf - m[0]*m[1];	// rg
+	covar[5] = cov[5]*sf - m[1]*m[2];	// gb
+	covar[6] = cov[8]*sf - m[2]*m[3];	// ba
+	covar[7] = cov[3]*sf - m[0]*m[3];	// ra
+
+	covar[8] = cov[2]*sf - m[0]*m[2];	// rb
+	covar[9] = cov[6]*sf - m[1]*m[3];	// ga
+	covar[10] = covar[8];				// rb
+	covar[11] = covar[9];				// ga
+}
+
+static void scalar_calc_pca4(float pca[4], const float covar[12])
+{
 	float local_pca[4];
 	for (int i = 0; i < 4; ++i)
 		local_pca[i] = pca[i];
@@ -3468,17 +3496,25 @@ static void scalar_calc_subset_pca4(float mean[4], float pca[4], const BC7Subset
 	// iteration at all, just normalizing once at the end is fine.
 	for(int iter = 0; iter < PCA_POWER_ITERS; ++iter)
 	{
-		float x = cov[0]*local_pca[0] + cov[1]*local_pca[1] + cov[2]*local_pca[2] + cov[3]*local_pca[3];
-		float y = cov[1]*local_pca[0] + cov[4]*local_pca[1] + cov[5]*local_pca[2] + cov[6]*local_pca[3];
-		float z = cov[2]*local_pca[0] + cov[5]*local_pca[1] + cov[7]*local_pca[2] + cov[8]*local_pca[3];
-		float w = cov[3]*local_pca[0] + cov[6]*local_pca[1] + cov[8]*local_pca[2] + cov[9]*local_pca[3];
+		// NOTE(fg): the vector versions store the matrix by diagonals and thus sum in a slightly
+		// unconventional order; match the order of summation here to get the same results
+
+		// covar[0..3] stores diagonal elements:      rr, gg, bb, aa
+		// covar[4..7] stores superdiagonal elements: rg, gb, ba, ra
+		// covar[8..9] is the rest:                   rb, ga
+		float x = covar[0]*local_pca[0] + covar[4]*local_pca[1] + covar[8]*local_pca[2] + covar[7]*local_pca[3];
+		float y = covar[1]*local_pca[1] + covar[5]*local_pca[2] + covar[9]*local_pca[3] + covar[4]*local_pca[0];
+		float z = covar[2]*local_pca[2] + covar[6]*local_pca[3] + covar[8]*local_pca[0] + covar[5]*local_pca[1];
+		float w = covar[3]*local_pca[3] + covar[7]*local_pca[0] + covar[9]*local_pca[1] + covar[6]*local_pca[2];
 		local_pca[0] = x;
 		local_pca[1] = y;
 		local_pca[2] = z;
 		local_pca[3] = w;
 	}
 
-	float len_sq = radtex_sqr(local_pca[0]) + radtex_sqr(local_pca[1]) + radtex_sqr(local_pca[2]) + radtex_sqr(local_pca[3]);
+	// NOTE(fg): our SIMD versions use sum_across which sums with 2-away, then with 1-away,
+	// so calculation order must be this:
+	float len_sq = (radtex_sqr(local_pca[0]) + radtex_sqr(local_pca[2])) + (radtex_sqr(local_pca[1]) + radtex_sqr(local_pca[3]));
 	if (len_sq > 0.0f)
 	{
 		float len = sqrtf(len_sq); // NOTE(fg): divide not mul by recip so we match SSE version exactly
@@ -3492,9 +3528,98 @@ static void scalar_calc_subset_pca4(float mean[4], float pca[4], const BC7Subset
 	}
 }
 
+#ifdef PCA_REFACTOR
+// Swaps the channel c with alpha (index 3)
+static inline void swap_channel(float pca[4], int c)
+{
+	radtex_swap(pca[c], pca[3]);
+}
+
+// Zeroes the correct channel based upon idx [0..4] where:
+//	1 -> zero alpha
+//	2 -> zero red
+//	3 -> zero green
+//	4 -> zero blue
+// Otherwise, do nothing.
+static void zero_channel(float pca[4], int idx)
+{
+	switch (idx)
+	{
+	case 1: pca[3] = 0.0f; break;
+	case 2: pca[0] = 0.0f; break;
+	case 3: pca[1] = 0.0f; break;
+	case 4: pca[2] = 0.0f; break;
+	default: break;
+	}
+}
+
+// Prepare 5 vectors worth of pca from the 4-comp, seed. The result, pca,
+// contains the 4-comp and 3-comp with component swaps:
+//	pca[0] - 4-comp - rgba
+//	pca[1] - 3-comp - rgb_
+//	pca[2] - 3-comp - _gba
+//	pca[3] - 3-comp - r_ba
+//	pca[4] - 3-comp - rg_a
+static void scalar_calc_combo_pca(float pca[5][4], const float seed[4], const float covar[12])
+{
+	float local_pca[5][4];
+	for LOOP(i, 5)
+	{
+		memcpy(local_pca[i], seed, 4*sizeof(float));
+		zero_channel(local_pca[i], i);
+	}
+
+	// Power iteration to find the eigenvector corresponding to the largest absolute eigenvalue.
+	//
+	// NOTE(fg): with the parameters we use, iters <= 3, and we're using floats with a covariance
+	// matrix computed from 8-bit numbers, so there's really no need to renormalize inside the
+	// iteration at all, just normalizing once at the end is fine.
+	for(int iter = 0; iter < PCA_POWER_ITERS; ++iter)
+	{
+		for LOOP(i, 5)
+		{
+			// NOTE(fg): the vector versions store the matrix by diagonals and thus sum in a slightly
+			// unconventional order; match the order of summation here to get the same results
+
+			// covar[0..3] stores diagonal elements:      rr, gg, bb, aa
+			// covar[4..7] stores superdiagonal elements: rg, gb, ba, ra
+			// covar[8..9] is the rest:                   rb, ga
+			float x = covar[0]*local_pca[i][0] + covar[4]*local_pca[i][1] + covar[8]*local_pca[i][2] + covar[7]*local_pca[i][3];
+			float y = covar[1]*local_pca[i][1] + covar[5]*local_pca[i][2] + covar[9]*local_pca[i][3] + covar[4]*local_pca[i][0];
+			float z = covar[2]*local_pca[i][2] + covar[6]*local_pca[i][3] + covar[8]*local_pca[i][0] + covar[5]*local_pca[i][1];
+			float w = covar[3]*local_pca[i][3] + covar[7]*local_pca[i][0] + covar[9]*local_pca[i][1] + covar[6]*local_pca[i][2];
+			local_pca[i][0] = x;
+			local_pca[i][1] = y;
+			local_pca[i][2] = z;
+			local_pca[i][3] = w;
+
+			zero_channel(local_pca[i], i);
+		}
+	}
+
+	for LOOP(i, 5)
+	{
+		// NOTE(fg): our SIMD versions use sum_across which sums with 2-away, then with 1-away,
+		// so calculation order must be this:
+		float len_sq = (radtex_sqr(local_pca[i][0]) + radtex_sqr(local_pca[i][2])) + (radtex_sqr(local_pca[i][1]) + radtex_sqr(local_pca[i][3]));
+		if (len_sq > 0.0f)
+		{
+			float len = sqrtf(len_sq); // NOTE(fg): divide not mul by recip so we match SSE version exactly
+			for(int c = 0; c < 4; ++c)
+				pca[i][c] = local_pca[i][c] / len;
+		}
+		else
+		{
+			for(int c = 0; c < 4; ++c)
+				pca[i][c] = 0.0f;
+		}
+	}
+}
+#endif // PCA_REFACTOR
+
 #ifdef DO_BUILD_SSE4
 
-static void sse4_calc_subset_pca3(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void sse4_calc_subset_mean_covar3(float mean[4], float covar[8], const BC7SubsetInput *in)
 {
 	// We store the covar matrix by diagonals, which looks funky but reduces the number
 	// of shuffles we need to do:
@@ -3526,8 +3651,29 @@ static void sse4_calc_subset_pca3(float mean[4], float pca[4], const BC7SubsetIn
 	cov0 = cov0 * sf - m * m;
 	cov1 = cov1 * sf - m * m.yzxw();
 
+	#ifdef SCALAR_PARANOIA
+	// these should match exactly
+	float ref_mean[4], ref_covar[8];
+	scalar_calc_subset_mean_covar3(ref_mean, ref_covar, in);
+
+	RR_ASSERT(memcmp(ref_mean, mean, 4*sizeof(float)) == 0);
+	// NOTE(djg):
+	// Don't test for bitwise equality in the cov w component since
+	// the SIMD ver computes it and the ref variant doesn't.
+	RR_ASSERT(memcmp(&ref_covar[0], &cov0, 3*sizeof(float)) == 0);
+	RR_ASSERT(memcmp(&ref_covar[4], &cov1, 3*sizeof(float)) == 0);
+	#endif
+
+	cov0.storeu(&covar[0]);
+	cov1.storeu(&covar[4]);
+}
+
+static void sse4_calc_pca3(float pca[4], const float covar[8])
+{
 	// Set up for power iteration
 	VecF32x4 local_pca = VecF32x4::loadu(pca);
+	VecF32x4 cov0 = VecF32x4::loadu(&covar[0]);
+	VecF32x4 cov1 = VecF32x4::loadu(&covar[4]);
 	VecF32x4 cov2 = cov1.zxyw();
 
 	// Power iteration to find the eigenvector corresponding to the largest absolute eigenvalue.
@@ -3545,18 +3691,21 @@ static void sse4_calc_subset_pca3(float mean[4], float pca[4], const BC7SubsetIn
 
 	#ifdef SCALAR_PARANOIA
 	// these should match exactly
-	float ref_mean[4], ref_pca[4];
+	float ref_pca[4];
 	memcpy(ref_pca, pca, 4 * sizeof(pca[0]));
-	scalar_calc_subset_pca3(ref_mean, ref_pca, in);
+	scalar_calc_pca3(ref_pca, covar);
 
-	RR_ASSERT(memcmp(ref_mean, mean, 4*sizeof(float)) == 0);
-	RR_ASSERT(memcmp(ref_pca, &final_pca, 4*sizeof(float)) == 0);
+	// NOTE(fg):
+	// Don't test for bitwise equality in the final_pca w component since
+	// the SIMD ver computes it and the ref variant doesn't, just check that
+	// the vector w compares equal to 0, so we accept -0 too.
+	RR_ASSERT(memcmp(ref_pca, &final_pca, 3*sizeof(float)) == 0 && final_pca.wwww().scalar_x() == 0.0f);
 	#endif
 
 	final_pca.storeu(pca);
 }
 
-static void sse4_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void sse4_calc_subset_mean_covar4(float mean[4], float covar[12], const BC7SubsetInput *in)
 {
 	// We store the covar matrix by diagonals (with wrap-around), which looks funky
 	// but reduces the number of shuffles we need to do:
@@ -3578,8 +3727,8 @@ static void sse4_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetIn
 
 		m += a;
 		cov0 += a * a;
-		cov1 += a * a.shuf<1,2,3,0>();
-		cov2 += a * a.shuf<2,3,0,1>();
+		cov1 += a * a.yzwx();
+		cov2 += a * a.zwxy();
 	}
 
 	// Finalize mean (divide by count)
@@ -3589,12 +3738,33 @@ static void sse4_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetIn
 
 	// Divide sum-of-squares matrix by count and subtract out mean*mean^T to get the actual covariance matrix
 	cov0 = cov0 * sf - m * m;
-	cov1 = cov1 * sf - m * m.shuf<1,2,3,0>();
-	cov2 = cov2 * sf - m * m.shuf<2,3,0,1>();
+	cov1 = cov1 * sf - m * m.yzwx();
+	cov2 = cov2 * sf - m * m.zwxy();
 
+	#ifdef SCALAR_PARANOIA
+	// these should match exactly
+	float ref_mean[4], ref_covar[12];
+	scalar_calc_subset_mean_covar4(ref_mean, ref_covar, in);
+
+	RR_ASSERT(memcmp(ref_mean, mean, 4*sizeof(float)) == 0);
+	RR_ASSERT(memcmp(&ref_covar[0], &cov0, 4*sizeof(float)) == 0);
+	RR_ASSERT(memcmp(&ref_covar[4], &cov1, 4*sizeof(float)) == 0);
+	RR_ASSERT(memcmp(&ref_covar[8], &cov2, 4*sizeof(float)) == 0);
+	#endif
+
+	cov0.storeu(&covar[0]);
+	cov1.storeu(&covar[4]);
+	cov2.storeu(&covar[8]);
+}
+
+static void sse4_calc_pca4(float pca[4], const float covar[12])
+{
 	// Set up for power iteration
 	VecF32x4 local_pca = VecF32x4::loadu(pca);
-	VecF32x4 cov3 = cov1.shuf<3,0,1,2>();
+	VecF32x4 cov0 = VecF32x4::loadu(&covar[0]);
+	VecF32x4 cov1 = VecF32x4::loadu(&covar[4]);
+	VecF32x4 cov2 = VecF32x4::loadu(&covar[8]);
+	VecF32x4 cov3 = cov1.wxyz();
 
 	// Power iteration to find the eigenvector corresponding to the largest absolute eigenvalue.
 	//
@@ -3604,9 +3774,9 @@ static void sse4_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetIn
 	for(int iter = 0; iter < PCA_POWER_ITERS; ++iter)
 	{
 		local_pca = local_pca * cov0 +
-			local_pca.shuf<1,2,3,0>() * cov1 +
-			local_pca.shuf<2,3,0,1>() * cov2 +
-			local_pca.shuf<3,0,1,2>() * cov3;
+			local_pca.yzwx() * cov1 +
+			local_pca.zwxy() * cov2 +
+			local_pca.wxyz() * cov3;
 	}
 
 	// Normalize result
@@ -3616,57 +3786,177 @@ static void sse4_calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetIn
 
 	#ifdef SCALAR_PARANOIA
 	// these should match exactly
-	float ref_mean[4], ref_pca[4];
+	float ref_pca[4];
 	memcpy(ref_pca, pca, 4 * sizeof(pca[0]));
-	scalar_calc_subset_pca4(ref_mean, ref_pca, in);
+	scalar_calc_pca4(ref_pca, covar);
 
-	RR_ASSERT(memcmp(ref_mean, mean, 4*sizeof(float)) == 0);
 	RR_ASSERT(memcmp(ref_pca, &final_pca, 4*sizeof(float)) == 0);
 	#endif
 
 	final_pca.storeu(pca);
 }
 
+#ifdef PCA_REFACTOR
+static void sse4_calc_combo_pca(float pca[5][4], const float seed[4], const float covar[12])
+{
+	// Set up for power iteration
+	VecF32x4 zero = VecF32x4::zero();
+	VecF32x4 local_pca[5] = {
+		VecF32x4::loadu(seed),
+		_mm_blend_ps(VecF32x4::loadu(seed), zero, 0x8),
+		_mm_blend_ps(VecF32x4::loadu(seed), zero, 0x1),
+		_mm_blend_ps(VecF32x4::loadu(seed), zero, 0x2),
+		_mm_blend_ps(VecF32x4::loadu(seed), zero, 0x4),
+	};
+	VecF32x4 cov0 = VecF32x4::loadu(&covar[0]);
+	VecF32x4 cov1 = VecF32x4::loadu(&covar[4]);
+	VecF32x4 cov2 = VecF32x4::loadu(&covar[8]);
+	VecF32x4 cov3 = cov1.wxyz();
+
+	// Power iteration to find the eigenvector corresponding to the largest absolute eigenvalue.
+	//
+	// NOTE(fg): with the parameters we use, iters <= 3, and we're using floats with a covariance
+	// matrix computed from 8-bit numbers, so there's really no need to renormalize inside the
+	// iteration at all, just normalizing once at the end is fine.
+	for(int iter = 0; iter < PCA_POWER_ITERS; ++iter)
+	{
+#define MULT(local_pca) \
+	local_pca = local_pca * cov0 + local_pca.yzwx() * cov1 + local_pca.zwxy() * cov2 + local_pca.wxyz() * cov3
+
+		MULT(local_pca[0]);
+		MULT(local_pca[1]);
+		local_pca[1] = _mm_blend_ps(local_pca[1], zero, 0x8);
+		MULT(local_pca[2]);
+		local_pca[2] = _mm_blend_ps(local_pca[2], zero, 0x1);
+		MULT(local_pca[3]);
+		local_pca[3] = _mm_blend_ps(local_pca[3], zero, 0x2);
+		MULT(local_pca[4]);
+		local_pca[4] = _mm_blend_ps(local_pca[4], zero, 0x4);
+
+#undef MULT
+	}
+
+	// Normalize result
+	for LOOP(i, 5)
+	{
+		VecF32x4 len_sq = (local_pca[i] * local_pca[i]).sum_across();
+		VecF32x4 len_positive = len_sq.cmp_gt(zero);
+		VecF32x4 final_pca = (local_pca[i] / VecF32x4r_sqrt(len_sq)) & len_positive;
+		final_pca.storeu(pca[i]);
+	}
+	#ifdef SCALAR_PARANOIA
+	// these should match exactly
+	float ref_pca[5][4];
+	scalar_calc_combo_pca(ref_pca, seed, covar);
+
+	for LOOP(i, 5)
+		RR_ASSERT(memcmp(ref_pca[i], pca[i], 4*sizeof(float)) == 0);
+	#endif
+}
+#endif // PCA_REFACTOR
 #endif
 
-static void calc_subset_pca3(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void calc_subset_mean_covar3(float mean[4], float covar[8], const BC7SubsetInput *in)
 {
 #ifdef DO_BUILD_SSE4
-	sse4_calc_subset_pca3(mean, pca, in);
+	sse4_calc_subset_mean_covar3(mean, covar, in);
 #else
-	scalar_calc_subset_pca3(mean, pca, in);
+	scalar_calc_subset_mean_covar3(mean, covar, in);
 #endif
 }
 
-static void calc_subset_pca4(float mean[4], float pca[4], const BC7SubsetInput *in)
+static void calc_pca3(float pca[4], const float covar[8])
 {
 #ifdef DO_BUILD_SSE4
-	sse4_calc_subset_pca4(mean, pca, in);
+	sse4_calc_pca3(pca, covar);
 #else
-	scalar_calc_subset_pca4(mean, pca, in);
+	scalar_calc_pca3(pca, covar);
 #endif
 }
+
+static void calc_subset_mean_covar4(float mean[4], float covar[12], const BC7SubsetInput *in)
+{
+#ifdef DO_BUILD_SSE4
+	sse4_calc_subset_mean_covar4(mean, covar, in);
+#else
+	scalar_calc_subset_mean_covar4(mean, covar, in);
+#endif
+}
+
+static void calc_pca4(float pca[4], const float covar[12])
+{
+#ifdef DO_BUILD_SSE4
+	sse4_calc_pca4(pca, covar);
+#else
+	scalar_calc_pca4(pca, covar);
+#endif
+}
+
+#ifdef PCA_REFACTOR
+static void calc_combo_pca(float pca[5][4], const float seed[4], const float covar[12])
+{
+#ifdef DO_BUILD_SSE4
+	sse4_calc_combo_pca(pca, seed, covar);
+#else
+	scalar_calc_combo_pca(pca, seed, covar);
+#endif
+}
+#endif
 
 static int bc7enc_refine_pca_core(BC7SubsetEndpoints out_info[], int out_info_size, 
-	const BC7Color seed_endpoints[2], const BC7SubsetInput *in, BC7Flags flags, const BC7EncOptions *opt, const int comp, int ns, bool has_ib2)
+	const BC7SubsetState *st, const BC7SubsetInput *in, BC7Flags flags,
+	const BC7EncOptions *opt, const BC7Prep *prep, const int comp, int ns, bool has_ib2)
 {
 	RR_ASSERT(out_info_size > 0);
 
-	BC7SubsetEndpoints eps;
-	eps.endpoints[0] = seed_endpoints[0];
-	eps.endpoints[1] = seed_endpoints[1];
-
-	float mean[4], pca[4];
+	float mean[4], pca[4], covar[12];
 
 	// seed PCA vector
 	pca[3] = 0.0f; // make sure this is initialized even if comp==3
 	for (int i = 0; i < comp; i++)
-		pca[i] = static_cast<float>(seed_endpoints[1].v[i] - seed_endpoints[0].v[i]);
+		pca[i] = static_cast<float>(st->endpoints[1].v[i] - st->endpoints[0].v[i]);
 
 	if (comp == 3)
-		calc_subset_pca3(mean, pca, in); // this preserves pca[3]==0
+	{
+		calc_subset_mean_covar3(mean, covar, in);
+		calc_pca3(pca, covar); // this preserves pca[3]==0
+	}
 	else
-		calc_subset_pca4(mean, pca, in);
+	{
+		calc_subset_mean_covar4(mean, covar, in);
+		calc_pca4(pca, covar);
+	}
+
+	#ifdef PCA_REFACTOR
+	// Demonstrate pre-computed mean & covar match just calculated above.
+	if (in->num_pixels == 16) // Limited to single subset currently
+	{
+		float seed[4];
+		float test_pca[5][4];
+
+		for LOOP(i, 4)
+			seed[i] = static_cast<float>(st->endpoints[1].v[i] - st->endpoints[0].v[i]);
+
+		if (st->rbit)
+			swap_channel(seed, st->rbit - 1);
+
+		calc_combo_pca(test_pca, seed, prep->covar);
+
+		if (comp == 4)
+		{
+			if (st->rbit)
+				swap_channel(test_pca[0], st->rbit - 1);
+			RR_ASSERT(memcmp(test_pca[0], pca, 4*sizeof(float)) == 0);
+		}
+		else
+		{
+			// The result we want is in test_pca[st->rbit + 1]
+			if (st->rbit)
+				swap_channel(test_pca[st->rbit + 2], st->rbit - 1);
+			RR_ASSERT(memcmp(test_pca[st->rbit + 1], pca, 3*sizeof(float)) == 0 && pca[3] == 0.0f);
+		}
+	}
+	#endif
 
 	// Project pixels on the principal axis, take min and max projection as endpoints.
 	static const int MAXDOTS = 16;
@@ -3861,13 +4151,13 @@ static int bc7enc_refine_pca_core(BC7SubsetEndpoints out_info[], int out_info_si
 }
 
 template<typename Mode>
-static void bc7enc_refine_pca(BC7SubsetState *st, const BC7SubsetInput *in, BC7Flags flags, const BC7EncOptions *opt)
+static void bc7enc_refine_pca(BC7SubsetState *st, const BC7SubsetInput *in, BC7Flags flags, const BC7EncOptions *opt, const BC7Prep *prep)
 {
 	const int comp = (Mode::ab != 0 && Mode::ib2 == 0 && !(flags & BC7ENC_IGNORE_ALPHA)) ? 4 : 3;
 	BC7SubsetEndpoints results[80];
 
 	// determine what to try
-	int count = bc7enc_refine_pca_core(results, (int)RR_ARRAY_SIZE(results), st->endpoints, in, flags, opt, comp, Mode::ns, Mode::ib2 != 0);
+	int count = bc7enc_refine_pca_core(results, (int)RR_ARRAY_SIZE(results), st, in, flags, opt, prep, comp, Mode::ns, Mode::ib2 != 0);
 	if (!count)
 		return;
 
@@ -3943,8 +4233,11 @@ static void bc7enc_refine_subset_partition(BC7SubsetState *st, const BC7SubsetIn
 	RR_ASSERT( opt->partition_pca || opt->partition_lsq_iters );
 	// what's actually used here is partition_pca = true , lsq_iters = 1 or 2
 	
+	TRACE("  pre-pca: (%02x,%02x,%02x,%02x) (%02x,%02x,%02x,%02x)\n",
+		  st->endpoints[0].r, st->endpoints[0].g, st->endpoints[0].b, st->endpoints[0].a,
+		  st->endpoints[1].r, st->endpoints[1].g, st->endpoints[1].b, st->endpoints[1].a);
 	TRACE("  sub pre-refine err=%d\n", st->err);
-	if (opt->partition_pca) bc7enc_refine_pca<Mode>(st, in, BC7ENC_PCA | retain_flags, opt);
+	if (opt->partition_pca) bc7enc_refine_pca<Mode>(st, in, BC7ENC_PCA | retain_flags, opt, prep);
 	TRACE("  refine pca err=%d\n", st->err);
 	TRACE("  pre-lls: (%02x,%02x,%02x,%02x) (%02x,%02x,%02x,%02x)\n",
 		  st->endpoints[0].r, st->endpoints[0].g, st->endpoints[0].b, st->endpoints[0].a,
@@ -3980,7 +4273,7 @@ static RADNOINLINE void bc7enc_refine_mode(const U8 * block, BC7BlockState *st, 
 
 		if (sst->err)
 		{
-			if (flags & (BC7ENC_ALL_PCA)) bc7enc_refine_pca<Mode>(sst, &input, flags, opt);
+			if (flags & (BC7ENC_ALL_PCA)) bc7enc_refine_pca<Mode>(sst, &input, flags, opt, prep);
 
 			if (flags & BC7ENC_SLIDE_SELECTORS) bc7enc_refine_slide_selectors<Mode>(sst, &input, flags);
 			if (flags & BC7ENC_EXTRAPOLATE_SELECTORS) bc7enc_refine_extrapolate_selectors<Mode>(sst, &input, flags);
@@ -4146,7 +4439,17 @@ static BC7Error bc7enc_try_partition(const U8 *block, const BC7Prep *prep, BC7Re
 					// do one refine on this subset to make this a better estimate :
 					//	(this is only in VerySlow & Reference)
 					if (opt->flags & BC7ENC_REFINE_PARTITIONS)
+					{
 						bc7enc_refine_subset_partition<Mode>(sst, in, opt, prep, s);
+					}
+					else if (Mode::index == 6 && (opt->flags & BC7ENC_MODE6_EARLY_LSQ_FIT))
+					{
+						// Run one round of LSQ for Mode 6. This is done to bias towards Mode
+						// 6 blocks that already been BC encoded. eg. if BC1 encoded pixels
+						// were converted to an image and recompressed with BC7.
+						int retain_flags = opt->flags & BC7ENC_RETAIN_MASK;
+						bc7enc_refine_lsq_endpoints_iterated<Mode>(sst, in, retain_flags, 1);
+					}
 
 					RR_ASSERT( check_endpoints_q<Mode>(sst,opt->flags) );
 				}
@@ -4516,6 +4819,23 @@ void bc7_encode_single_color_block(U8 * output_bc7, const U8 rgba[4])
 	RR_PUT64_LE_UNALIGNED(output_bc7 + 8, 0xaaaaaaac); // last 2 color bits, color index bits, alpha index bits
 }
 
+bool bc7_is_encoded_single_color_block(const U8 * bc7_block)
+{
+	// Check for the types of blocks we emit above:
+	if ( bc7_block[0] != 0x20 ) // not mode 5, or rotation!=0? not one of ours!
+		return false;
+
+	// Check whether the indices are all the same, and matching with the pattern we emit above
+	// (color inds all 1, alpha inds all 0).
+	// Any block with this index pattern is _definitely_ solid-color because all indices are the
+	// same. It doesn't catch _all_ solid-color blocks but it doesn't have to.
+	U64 all_inds = RR_GET64_LE_UNALIGNED(bc7_block + 8);
+	if ( ( all_inds & ~3 ) == 0xaaaaaaac )
+		return true;
+
+	return false;
+}
+
 static BC7BlockState *bc7_enc_try_refine(const U8 * block, BC7Results &enc_results, const BC7EncOptions &opt, const BC7Prep * prep)
 {
 	SIMPLEPROFILE_SCOPE(bc7_enc_try_refine);
@@ -4639,7 +4959,7 @@ void bc7_enc_options_set(BC7EncOptions * popt,rrDXTCLevel level, rrDXTCOptions o
 
 	case rrDXTCLevel_Fast:
 		// this corresponds to "fastest" in rad_tex_tools
-		opt.flags = BC7ENC_PCA_STRETCH;
+		opt.flags = BC7ENC_PCA_STRETCH | BC7ENC_MODE6_EARLY_LSQ_FIT;
 		opt.max_part = 9;
 		opt.narrow0 = 12;
 		opt.narrow1 = 6;
@@ -4649,7 +4969,8 @@ void bc7_enc_options_set(BC7EncOptions * popt,rrDXTCLevel level, rrDXTCOptions o
 	default:
 	case rrDXTCLevel_Slow:
 		// this corresponds to "fast" in rad_tex_tools
-		opt.flags = BC7ENC_EXTRAPOLATE_SELECTORS | BC7ENC_SLIDE_SELECTORS | BC7ENC_PCA_STRETCH | BC7ENC_JITTER_SELECTORS;
+		opt.flags = BC7ENC_EXTRAPOLATE_SELECTORS | BC7ENC_SLIDE_SELECTORS | BC7ENC_PCA_STRETCH | BC7ENC_JITTER_SELECTORS |
+			BC7ENC_MODE6_EARLY_LSQ_FIT;
 		opt.max_part = 28;
 		opt.narrow0 = 36;
 		opt.narrow1 = 12;
@@ -4777,6 +5098,17 @@ const U8 * BC7Prep_init(BC7Prep * prep, const U8 in_block[64], const BC7EncOptio
 			// just initialize all the variables
 		}
 	}
+
+#ifdef PCA_REFACTOR
+	// Prepare 4 channel covariance matrix for use in later mode refine
+	{
+		BC7SubsetInput input;
+		// NOTE(djg): values for alpha_chan and alpha_weight are unused by
+		// calc_subset_mean_covar4, so pick some reasonable, but unused values.
+		input.init(block, 16, 3, 1);
+		calc_subset_mean_covar4(prep->mean, prep->covar, &input);
+	}
+#endif
 
 	// Seed RNG if we need it
 	if (opt.flags & BC7ENC_RANDOMIZED_MASK)

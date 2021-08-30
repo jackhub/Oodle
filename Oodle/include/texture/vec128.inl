@@ -20,11 +20,11 @@ OODLE_NS_START
 typedef __m128i Vec128;
 typedef __m128i const & Vec128r;
 
-static inline Vec128 load32u(const void *ptr)			{ return _mm_cvtsi32_si128(RR_GET32_LE_UNALIGNED(ptr)); }
+static inline Vec128 load32u(const void *ptr)			{ return _mm_cvtsi32_si128(RR_GET32_NATIVE_UNALIGNED(ptr)); }
 static inline Vec128 load64u(const void *ptr)			{ return _mm_loadl_epi64((const __m128i *)ptr); }
 static inline Vec128 load128u(const void *ptr)			{ return _mm_loadu_si128((const __m128i *)ptr); }
 static inline Vec128 load128a(const void *ptr)			{ return _mm_load_si128((const __m128i *)ptr); }
-static inline void store32u(void *ptr, Vec128r x)		{ RR_PUT32_LE_UNALIGNED(ptr, _mm_cvtsi128_si32(x)); }
+static inline void store32u(void *ptr, Vec128r x)		{ RR_PUT32_NATIVE_UNALIGNED(ptr, _mm_cvtsi128_si32(x)); }
 static inline void store64u(void *ptr, Vec128r x)		{ _mm_storel_epi64((__m128i *)ptr, x); }
 static inline void store128u(void *ptr, Vec128r x)		{ _mm_storeu_si128((__m128i *)ptr, x); }
 static inline void store128a(void *ptr, Vec128r x)		{ _mm_store_si128((__m128i *)ptr, x); }
@@ -89,6 +89,8 @@ struct VecF32x4
 	//static VecF32x4 from_int32(VecF32x4r x)			{ return _mm_cvtepi32_ps(x); }
 	static VecF32x4 loadu(const float *ptr)			{ return _mm_loadu_ps(ptr); } // unaligned
 	static VecF32x4 loada(const float *ptr)			{ return _mm_load_ps(ptr); } // 16-byte aligned
+	static VecF32x4 load_scalar(const float *ptr)	{ return _mm_load_ss(ptr); }
+	static VecF32x4 load_pair(const float *ptr)		{ return _mm_castpd_ps(_mm_load_sd((const double *)ptr)); }
 
 	Vec128 to_int32_trunc()	const					{ return _mm_cvttps_epi32(v); }
 	Vec128 to_int32_round()	const					{ return _mm_cvtps_epi32(v); }
@@ -126,6 +128,10 @@ struct VecF32x4
 	// shuffles
 	template<int x, int y, int z, int w>
 	VecF32x4 shuf() const							{ return _mm_shuffle_ps(v, v, _MM_SHUFFLE(w,z,y,x)); }
+
+	// cyclic permutations of elements
+	VecF32x4 yzwx() const							{ return shuf<1,2,3,0>(); }
+	VecF32x4 wxyz() const							{ return shuf<3,0,1,2>(); }
 
 	// cyclic permutations of first 3 elements
 	VecF32x4 yzxw() const							{ return shuf<1,2,0,3>(); }

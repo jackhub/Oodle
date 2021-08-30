@@ -36,7 +36,6 @@ enum
 
 enum BC6Metric
 {
-	BC6METRIC_PQSAD, // good in the right range but like logspace outside it so ehh
 	BC6METRIC_LOGSPACE, // definitely bad but nice to have as a sanity check sometimes
 	BC6METRIC_MRSSE, // good, best yet when channel-weighted. use this one.
 };
@@ -116,8 +115,6 @@ struct BC6Input
 	// "alpha" channel = per-pixel LLS weights (initially 1.0)
 	RAD_ALIGN(F32, blockf_lsq[64], 16);
 
-	// blockpq is used for color matching and is better with the channels deinterleaved
-	S32 blockpq[3][16];
 	rrRandState rand_seed;
 
 	BC6Metric active_metric;

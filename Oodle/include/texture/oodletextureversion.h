@@ -18,12 +18,12 @@ PUBSTART
 //	the DLL is incompatible when MAJOR is bumped
 //	MINOR is for internal revs and bug fixes that don't affect API compatibility
 #define OODLE2TEX_VERSION_MAJOR			9
-#define OODLE2TEX_VERSION_MINOR			0
+#define OODLE2TEX_VERSION_MINOR			4
 
 // OodleTextureVersion string is 1 . MAJOR . MINOR
 //	don't make it from macros cuz the doc tool has to parse the string literal
 
-#define OodleTextureVersion "2.9.0"    IDOC
+#define OodleTextureVersion "2.9.4"    IDOC
 /*
 */
 

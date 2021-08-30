@@ -25,7 +25,101 @@
 #include "rrsimpleprofstub.h"
 #include "threadprofiler.h"
 
+using namespace oo2tex;
+
 RR_NAMESPACE_START
+
+// High-level RDO encode options per codec
+struct RDOEncodeConfig
+{
+	rrDXTCLevel baseline_effort; // Level to use for the baseline encode
+	int max_slice_blocks;
+};
+
+static const RDOEncodeConfig * get_rdo_encode_config(rrPixelFormat fmt, rrDXTCLevel level)
+{
+	static const RDOEncodeConfig c_bc1_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_Slow,     4096 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_Slow,     4096 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 8192 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 8192 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 8192 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc2_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_Slow    , 2048 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_Slow    , 2048 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 2048 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc3_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_Slow,     2048 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_Slow,     2048 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 2048 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc4_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_VerySlow, 2048 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_VerySlow, 2048 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 8192 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 8192 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc5_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_VerySlow, 1024 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_VerySlow, 1024 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 2048 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc6_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_Slow,     4096 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_Slow,     4096 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Reference (not exposed)
+	};
+
+	static const RDOEncodeConfig c_bc7_configs[rrDXTCLevel_Count] =
+	{
+		{ rrDXTCLevel_Slow,     2048 }, // Very Fast (not exposed)
+		{ rrDXTCLevel_Slow,     2048 }, // Fast ("Low" effort in public API)
+		{ rrDXTCLevel_Slow,     4096 }, // Slow ("Normal" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // VerySlow ("High" effort in public API)
+		{ rrDXTCLevel_VerySlow, 4096 }, // Reference (not exposed)
+	};
+
+	RR_ASSERT(level >= rrDXTCLevel_VeryFast && level <= rrDXTCLevel_Reference);
+	switch ( fmt )
+	{
+	case rrPixelFormat_BC1:	return &c_bc1_configs[level];
+	case rrPixelFormat_BC2: return &c_bc2_configs[level];
+	case rrPixelFormat_BC3: return &c_bc3_configs[level];
+	case rrPixelFormat_BC4U: // fall-through
+	case rrPixelFormat_BC4S: return &c_bc4_configs[level];
+	case rrPixelFormat_BC5U: // fall-through
+	case rrPixelFormat_BC5S: return &c_bc5_configs[level];
+	case rrPixelFormat_BC6U: // fall-through
+	case rrPixelFormat_BC6S: return &c_bc6_configs[level];
+	case rrPixelFormat_BC7:  return &c_bc7_configs[level];
+	default:
+		RR_ASSERT_FAILURE("not BC?");
+	}
+
+	return 0;
+}
 
 static bool rrDXTCRD_Single(BlockSurface * to_blocks,
 	const BlockSurface * from_blocks,
@@ -34,14 +128,15 @@ static bool rrDXTCRD_Single(BlockSurface * to_blocks,
 	//const BlockSurface * activity_blocks_1F_A,
 	//const BlockSurface * activity_blocks_4F,
 	int lambda,
-	rrDXTCOptions options)
+	rrDXTCOptions options,
+	const rrDXTCRD_Options & rdopts)
 {
 	THREADPROFILESCOPE("RDO");
 
 	switch( to_blocks->pixelFormat )
 	{
 	case rrPixelFormat_BC1:	
-		return rrDXT1_VQ_Single(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options);
+		return rrDXT1_VQ_Single(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options,rdopts);
 		
 	case rrPixelFormat_BC2:
 	case rrPixelFormat_BC3:
@@ -66,16 +161,30 @@ static bool rrDXTCRD_Single(BlockSurface * to_blocks,
 			baseline_blocks_color.blocks += 8;
 
 			const BlockSurface * activity_blocks_1F_A = activity_blocks_1F;
-	
+			bool A_blocks_done = false;
+
 			if ( to_blocks->pixelFormat == rrPixelFormat_BC3 )
 			{
 				// Encode the alpha part first as quasi-BC4
-				if ( ! BC4_RD(&to_blocks_alpha,from_blocks,&baseline_blocks_alpha,activity_blocks_1F_A,lambda,options) )
-					return false;
+
+				int alpha_lambda = lambda;
+				if ( rdopts.use_bc3_alpha_lambda )
+					alpha_lambda = rdopts.bc3_alpha_lambda;
+
+				if ( alpha_lambda > 0 )
+				{
+					if ( ! BC4_RD(&to_blocks_alpha,from_blocks,&baseline_blocks_alpha,activity_blocks_1F_A,alpha_lambda,options,rdopts) )
+						return false;
+
+					A_blocks_done = true;
+				}
+				// else if == 0 , drop down and use path below :
 			}
-			else
+
+			if ( ! A_blocks_done )
 			{
-				RR_ASSERT( to_blocks->pixelFormat == rrPixelFormat_BC2 );
+				// BC2 or BC3 with RD disabled
+				//RR_ASSERT( to_blocks->pixelFormat == rrPixelFormat_BC2 );
 				// just copy baseline, no RD for the BC2-alpha
 
 				RR_ASSERT( baseline_blocks_alpha.blockSizeBytes == 16 );
@@ -92,7 +201,7 @@ static bool rrDXTCRD_Single(BlockSurface * to_blocks,
 
 			// Then the color as quasi-BC1
 			// BC1 detects that it's writing to BC3 and knows that it's all four-color mode
-			if ( ! rrDXT1_VQ_Single(&to_blocks_color,from_blocks,&baseline_blocks_color,activity_blocks_1F,lambda,options) )
+			if ( ! rrDXT1_VQ_Single(&to_blocks_color,from_blocks,&baseline_blocks_color,activity_blocks_1F,lambda,options,rdopts) )
 				return false;
 
 			return true;
@@ -102,15 +211,15 @@ static bool rrDXTCRD_Single(BlockSurface * to_blocks,
 	case rrPixelFormat_BC4S:
 	case rrPixelFormat_BC5U:
 	case rrPixelFormat_BC5S:
-		return BC4_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options);
+		return BC4_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options,rdopts);
 	
 	case rrPixelFormat_BC6U:
 	case rrPixelFormat_BC6S:
-		return BC6_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options);
+		return BC6_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options,rdopts);
 
 	case rrPixelFormat_BC7:
-		return BC7_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options);
-		//return BC7_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_4F,lambda,options);
+		return BC7_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_1F,lambda,options,rdopts);
+		//return BC7_RD(to_blocks,from_blocks,baseline_blocks,activity_blocks_4F,lambda,options,rdopts);
 
 	default:
 		ooLogError("rrDXTCRD_Single BCN not supported");
@@ -126,6 +235,7 @@ struct rrDXTCRD_Slicer_Data
 {
 	int lambda;
 	rrDXTCOptions options;
+	rrDXTCRD_Options rdoptions;
 	
 	const BlockSurface * full_baseline;
 	const BlockSurface * full_activity_1F;
@@ -169,7 +279,7 @@ rrbool rrDXTCRD_Slicer_Func(BlockSurfaceJobSlicer_Data * slice,void * data)
 			&activity_slice_1F,
 			//&activity_slice_1F_A,
 			//&activity_slice_4F,
-			pdata->lambda,pdata->options);
+			pdata->lambda,pdata->options,pdata->rdoptions);
 	
 	return ret;
 }
@@ -182,15 +292,20 @@ struct rrDXTCRD_Context
 	BlockSurfaceObj to_baseline;
 	BlockSurfaceObj from_blocks_fmt;
 	rrDXTCOptions options;
+	rrDXTCRD_Options rdoptions;
 };
 
-bool rrDXTCRD_Encode_RDO_ReadContext(
+bool rrDXTCRD_Encode_RDO_ReadContext_Ex(
 	const rrDXTCRD_Context * ctx,
 	BlockSurface * to_blocks,
-	int lambda,void * jobify_user_ptr)
+	int lambda,const rrDXTCRD_Options &rdopts,
+	void * jobify_user_ptr, int num_workers)
 {
 	THREADPROFILESCOPE("Encode_RDO");
 	
+	if ( num_workers == OODLEJOB_DEFAULT )
+		num_workers = OodlePlugins_GetJobTargetParallelism();
+
 	// chunk into 256 KB output LZ chunks (32K blocks (1024x512 pixels))
 
 	// blocks should now be in output hardware swizzled order
@@ -212,28 +327,38 @@ bool rrDXTCRD_Encode_RDO_ReadContext(
 	RR_ASSERT( to_blocks->pixelFormat == ctx->to_baseline.pixelFormat );
 	RR_ASSERT( to_blocks->count == ctx->from_blocks_fmt.count );
 
+	const RDOEncodeConfig * cfg = get_rdo_encode_config(to_blocks->pixelFormat,rdopts.effort);
+
 	// 32K block chunks , 8K per slice = 4 way parallelism
 	//	 this is true for BC1 and BC4 but not the remaining formats which are 16B/block
 	// for those the 256k LZ chunks have 16k blocks and we would need to chop into chunks
 	// of 4096 blocks for 4-way parallelism
-	//const int max_slice_blocks = 8192;
-	//const int max_slice_blocks = 4096;
-	// this gives you always 4 slices : , eg. 8k for BC1 and 4k for BC7 :
-	const int max_slice_blocks = ((256*1024)/4)/(to_blocks->blockSizeBytes);
-	RR_ASSERT( max_slice_blocks == 4096 || max_slice_blocks == 8192 );
+	//
+	// we now determine this from the effort level; the default at high quality levels is
+	// to target 4 slices per 256k block, but this can be dialed down for speed
+	const int max_slice_blocks = cfg->max_slice_blocks;
 	
 	rrDXTCRD_Slicer_Data data;
 	data.lambda = lambda;
 	data.options = ctx->options;
+	data.rdoptions = rdopts;
 	
 	data.full_baseline = &ctx->to_baseline;
 	data.full_activity_1F = &ctx->activity_blocks_1F;
 	//data.full_activity_1F_A = &ctx->activity_blocks_1F_A;
 	//data.full_activity_4F = &ctx->activity_blocks_4F;
 	
-	rrbool ok = BlockSurface_JobSlicer_256K_then_N(to_blocks,&ctx->from_blocks_fmt,jobify_user_ptr,rrDXTCRD_Slicer_Func,&data,max_slice_blocks);
+	rrbool ok = BlockSurface_JobSlicer_256K_then_N(to_blocks,&ctx->from_blocks_fmt,num_workers,jobify_user_ptr,rrDXTCRD_Slicer_Func,&data,max_slice_blocks);
 	
 	return !!ok;
+}
+
+bool rrDXTCRD_Encode_RDO_ReadContext(
+	const rrDXTCRD_Context * ctx,
+	BlockSurface * to_blocks,
+	int lambda,void * jobify_user_ptr, int num_workers)
+{
+	return rrDXTCRD_Encode_RDO_ReadContext_Ex(ctx,to_blocks,lambda,ctx->rdoptions,jobify_user_ptr, num_workers);
 }
 
 rrDXTCRD_Context * rrDXTCRD_Context_New()
@@ -248,9 +373,24 @@ void rrDXTCRD_Context_Delete(rrDXTCRD_Context * ctx)
 	OodleDelete(ctx);
 }
 
+const BlockSurface * rrDXTCRD_Context_GetActivity(rrDXTCRD_Context * ctx)
+{
+	return &ctx->activity_blocks_1F;
+}
+
 const BlockSurface * rrDXTCRD_Context_GetBaseline(rrDXTCRD_Context * ctx)
 {
 	return &ctx->to_baseline;
+}
+
+const BlockSurface * rrDXTCRD_Context_GetFrom(rrDXTCRD_Context * ctx)
+{
+	return &ctx->from_blocks_fmt;
+}
+
+rrDXTCOptions rrDXTCRD_Context_GetOptions(rrDXTCRD_Context * ctx)
+{
+	return ctx->options;
 }
 
 struct activity_job_context
@@ -358,7 +498,7 @@ static OodleJobWaitSet * rrDXTCRD_Context_MakeActivity(
 	const rrSurface * from_surfaces, int num_surfaces,
 	EDXTCRD_Metric metric,EMakeActivityMode mam,rrDXTCOptions options,
 	BlockSurface * activity_bs, const OodleTex_Layout * layout,
-	void * jobify_user_ptr)
+	void * jobify_user_ptr,int num_workers)
 {
 	ctx->activity_handles.resize(num_surfaces);
 	ctx->activity_handles.memset_zero();
@@ -378,7 +518,12 @@ static OodleJobWaitSet * rrDXTCRD_Context_MakeActivity(
 		ctx->activity_contexts[i].mam = mam;
 		ctx->activity_contexts[i].options = options;
 
-		ctx->activity_handles[i] = OodleJob_Run(activity_job_func,&ctx->activity_contexts[i],NULL,0,jobify_user_ptr);
+		ctx->activity_handles[i] = OodleJob_Run_MaybeSingleThreaded(activity_job_func,&ctx->activity_contexts[i],NULL,0,jobify_user_ptr,num_workers);
+	}
+
+	if (num_workers == OODLEJOB_DISABLE) {
+		activity_finish_job(ctx);
+		return NULL;
 	}
 
 	// create a wait set for all the surface activity jobs
@@ -386,7 +531,7 @@ static OodleJobWaitSet * rrDXTCRD_Context_MakeActivity(
 
 	// queue up the finish job right after
 	U64 dep = OodleJobWaitSet_RootHandle(wait_set);
-	U64 finish_job = OodleJob_Run(activity_finish_job, ctx, &dep, 1, jobify_user_ptr);
+	U64 finish_job = OodleJob_Run_MaybeSingleThreaded(activity_finish_job, ctx, &dep, 1, jobify_user_ptr,num_workers);
 
 	// return a wait set for finish job
 	return OodleJobWaitSet_CreateChained(wait_set, &finish_job, 1, jobify_user_ptr);
@@ -397,7 +542,7 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 				const BlockSurface * from_blocks,
 				const rrSurface * from_surfaces,int num_surfaces, const OodleTex_Layout * layout,
 				rrDXTCOptions options,void * jobify_user_ptr,int num_workers,
-				EDXTCRD_Metric metric)
+				EDXTCRD_Metric metric,const rrDXTCRD_Options &rdoptions)
 {
 	SIMPLEPROFILE_SCOPE(RD_Context_Init);
 	THREADPROFILESCOPE("RD_Init");
@@ -405,6 +550,7 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 	RR_ASSERT( rrPixelFormat_IsBlockCompressed(to_pf) );
 
 	ctx->options = options;
+	ctx->rdoptions = rdoptions;
 
 	// compute activity masks
 	// activity mask -> blocks
@@ -416,8 +562,12 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 	// BC3 wants 1+1
 	// BC7 want 4F activity
 
-	RR_ASSERT( layout == NULL || num_surfaces == layout->m_surfaces.size32() );
+	// layout must be either not specified, universal, or have the right number of surfaces
+	RR_ASSERT( layout == NULL || layout->m_tile_w != 0 || num_surfaces == layout->m_surfaces.size32() );
 	RR_ASSERT( num_surfaces >= 1 );
+
+	if ( num_workers == OODLEJOB_DEFAULT )
+		num_workers = OodlePlugins_GetJobTargetParallelism();
 
 	activity_context act_ctx;
 	OodleJobWaitSet * activity_ws = 0;
@@ -435,7 +585,7 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 			from_surfaces,num_surfaces,
 			metric,e_make_activity_1F_RGB,options,
 			&ctx->activity_blocks_1F,layout,
-			jobify_user_ptr);
+			jobify_user_ptr,num_workers);
 		break;
 	case rrPixelFormat_BC7:
 	{
@@ -445,7 +595,7 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 			from_surfaces,num_surfaces,
 			metric,mam,options,
 			&ctx->activity_blocks_1F,layout,
-			jobify_user_ptr);
+			jobify_user_ptr,num_workers);
 		/*
 		switch(metric)
 		{
@@ -477,7 +627,7 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 				from_surfaces,num_surfaces,
 				metric,e_make_activity_1F_RGBA,options,
 				&ctx->activity_blocks_1F,layout,
-				jobify_user_ptr);
+				jobify_user_ptr,num_workers);
 			//BlockSurface_SetView(&(ctx->activity_blocks_1F_A),&(ctx->activity_blocks_1F));
 			break;
 		/*
@@ -508,8 +658,8 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 	// fill baseline encoding :
 	{
 	THREADPROFILESCOPE("baseline");
-	rrDXTCLevel baseline_level = rrDXTCLevel_VerySlow;
-	if ( ! rrSurfaceDXTC_CompressBCN_Blocks(&ctx->to_baseline,&ctx->from_blocks_fmt,baseline_level,num_workers,options,jobify_user_ptr) )
+	const RDOEncodeConfig * cfg = get_rdo_encode_config(to_pf,rdoptions.effort);
+	if ( ! rrSurfaceDXTC_CompressBCN_Blocks(&ctx->to_baseline,&ctx->from_blocks_fmt,cfg->baseline_effort,num_workers,options,jobify_user_ptr) )
 		return false;
 	}
 
@@ -519,9 +669,17 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 	return true;
 }
 
+void rrDXTCRD_SetDefaults(rrDXTCRD_Options * rdopts)
+{
+	RR_ZERO(*rdopts);
+	// Original default behavior is "high" effort level
+	rdopts->effort = rrDXTCLevel_Default;
+}
+
 bool rrDXTCRD_Encode_RDO(BlockSurface * to_blocks,const BlockSurface * from_blocks,
 				const rrSurface * from_surfaces,int num_from_surfaces, const OodleTex_Layout * layout,
-				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric)
+				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric,
+				const rrDXTCRD_Options &rdoptions)
 {
 	// note this is on the outer thread, whereas the others are on the worker threads
 	//	so this timer looks 4X shorter
@@ -533,8 +691,11 @@ bool rrDXTCRD_Encode_RDO(BlockSurface * to_blocks,const BlockSurface * from_bloc
 	RR_ASSERT( rrPixelFormat_IsBlockCompressed(pf) );
 
 	rrDXTCRD_Context * ctx = rrDXTCRD_Context_New();
+
+	if ( num_workers == OODLEJOB_DEFAULT )
+		num_workers = OodlePlugins_GetJobTargetParallelism();
 	
-	rrbool ok = rrDXTCRD_Context_Init(ctx,pf,from_blocks,from_surfaces,num_from_surfaces,layout,options,jobify_user_ptr,num_workers,metric);
+	rrbool ok = rrDXTCRD_Context_Init(ctx,pf,from_blocks,from_surfaces,num_from_surfaces,layout,options,jobify_user_ptr,num_workers,metric,rdoptions);
 	if ( ! ok )
 	{
 		rrDXTCRD_Context_Delete(ctx);
@@ -543,7 +704,7 @@ bool rrDXTCRD_Encode_RDO(BlockSurface * to_blocks,const BlockSurface * from_bloc
 	
 	// internal code can call with activity mask & baseline coding already done
 	
-	ok = rrDXTCRD_Encode_RDO_ReadContext(ctx,to_blocks,lambda,jobify_user_ptr);
+	ok = rrDXTCRD_Encode_RDO_ReadContext(ctx,to_blocks,lambda,jobify_user_ptr,num_workers);
 
 	rrDXTCRD_Context_Delete(ctx);
 	
@@ -552,7 +713,8 @@ bool rrDXTCRD_Encode_RDO(BlockSurface * to_blocks,const BlockSurface * from_bloc
 		
 bool rrDXTCRD_Encode_RDO_LinearSurface(rrSurface * to_surface,
 				const rrSurface * from_surface,
-				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric)
+				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric,
+				const rrDXTCRD_Options &rdoptions)
 {
 	BlockSurfaceObj to_blocks;
 	BlockSurface_SetView_of_RRS_BCN(&to_blocks,to_surface);
@@ -560,7 +722,7 @@ bool rrDXTCRD_Encode_RDO_LinearSurface(rrSurface * to_surface,
 	BlockSurfaceObj fm_blocks;
 	BlockSurface_AllocCopy_from_RRS(&fm_blocks,from_surface,1);
 	
-	bool ret = rrDXTCRD_Encode_RDO(&to_blocks,&fm_blocks,from_surface,1,NULL,lambda,options,jobify_user_ptr,num_workers,metric);
+	bool ret = rrDXTCRD_Encode_RDO(&to_blocks,&fm_blocks,from_surface,1,NULL,lambda,options,jobify_user_ptr,num_workers,metric,rdoptions);
 	
 	return ret;
 }				

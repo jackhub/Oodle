@@ -16,6 +16,7 @@ struct rrSurface;
 typedef void OODLE_CALLBACK rrPixelConsumerFunc(void * ctx,const void * pixels,rrPixelFormat pf,int x0,int y,int width);
 
 // large sigmas aren't actually supported
+// fm == to okay
 rrbool rrSurface_MakeGaussianBlurred(rrSurface * pTo,const rrSurface & from,double sigma);
 
 // Doesn't write to a destination surface, but rather writes it to temp mem for a rrPixelConsumerFunc

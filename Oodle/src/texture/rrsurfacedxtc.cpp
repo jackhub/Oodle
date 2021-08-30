@@ -11,12 +11,14 @@
 #include "rrsurfacebc67.h"
 #include "bc4compress.h"
 #include "templates/rrvector.h"
-//#include "rrsimpleprof.h"
 #include "rrsurfacejobslicer.h"
 #include "rrsurfaceutil.h"
 #include "rrsurfaceblit.h"
 #include "rrlog.h"
 #include "threadprofiler.h"
+
+#include "rrsimpleprof.h"
+//#include "rrsimpleprofstub.h"
 
 RR_NAMESPACE_START
 
@@ -129,7 +131,6 @@ bool BlockSurface_SetView_to_RGBA8_or_BGRA8(BlockSurface * to, const BlockSurfac
 {
 	BlockSurface_SetView(to,from);
 
-
 	if ( from->pixelFormat == rrPixelFormat_R8G8B8A8 ) return true;
 	if ( from->pixelFormat == rrPixelFormat_B8G8R8A8 ) return false;
 
@@ -154,9 +155,15 @@ rrbool rrSurfaceDXTC_CompressBC1(BlockSurface * to, const BlockSurface * from, r
 {
 	RR_ASSERT( from->count == to->count );
 	RR_ASSERT( to->pixelFormat == rrPixelFormat_BC1 );
+	SIMPLEPROFILE_SCOPE_N(compress_bc1, from->count);
+	
+	// was_rgbx is not the same as ignore alpha
+	//	it means you should read A=255 ; you might want to then preserve that value or not	
+	bool was_rgbx = ( from->pixelFormat == rrPixelFormat_R8G8B8x8 || from->pixelFormat == rrPixelFormat_B8G8R8x8 );
+	bool read_alpha = ( options & rrDXTCOptions_BC1_OneBitAlpha ) && ( ! was_rgbx );
 
 	BlockSurfaceObj from_converted;
-	bool rgbx_ok = ! ( options & rrDXTCOptions_BC1_OneBitAlpha ); // we'll KillAlpha anyway so RGBX is fine
+	bool rgbx_ok = true; // always allow RGBX, we'll KillAlpha on the block read if was_rgbx
 	bool is_rgba = BlockSurface_SetView_to_RGBA8_or_BGRA8(&from_converted,from,rgbx_ok,rrPixelFormat_B8G8R8A8);
 			
 	// for each block :
@@ -168,7 +175,7 @@ rrbool rrSurfaceDXTC_CompressBC1(BlockSurface * to, const BlockSurface * from, r
 		rrColorBlock4x4 colors = *((const rrColorBlock4x4 *)inPtr);
 		if ( is_rgba ) SwapRB(&colors); // BC1 coder wants old BGRA
 		
-		if ( options & rrDXTCOptions_BC1_OneBitAlpha )
+		if ( read_alpha )
 		{
 			// Canonicalize, then you can just use RGBA deltas
 			//	no need for the special alpha-aware error metric (still using that at the moment though)
@@ -195,6 +202,7 @@ rrbool rrSurfaceDXTC_CompressBC2(BlockSurface * to, const BlockSurface * from, r
 {
 	RR_ASSERT( from->count == to->count );
 	RR_ASSERT( to->pixelFormat == rrPixelFormat_BC2 );
+	SIMPLEPROFILE_SCOPE_N(compress_bc2, from->count);
 
 	BlockSurfaceObj from_converted;
 	bool is_rgba = BlockSurface_SetView_to_RGBA8_or_BGRA8(&from_converted,from,false,rrPixelFormat_B8G8R8A8);
@@ -230,6 +238,7 @@ rrbool rrSurfaceDXTC_CompressBC3(BlockSurface * to, const BlockSurface * from, r
 {
 	RR_ASSERT( from->count == to->count );
 	RR_ASSERT( to->pixelFormat == rrPixelFormat_BC3 );
+	SIMPLEPROFILE_SCOPE_N(compress_bc3, from->count);
 	
 	BlockSurfaceObj from_converted;
 	bool is_rgba = BlockSurface_SetView_to_RGBA8_or_BGRA8(&from_converted,from,false,rrPixelFormat_B8G8R8A8);
@@ -291,6 +300,7 @@ rrbool rrSurfaceDXTC_CompressBC4(BlockSurface * to, const BlockSurface * from, r
 
 	RR_ASSERT_ALWAYS( from->count == to->count );
 	RR_ASSERT_ALWAYS( to->pixelFormat == to_fmt );
+	SIMPLEPROFILE_SCOPE_N(compress_bc4, from->count);
 
 	BlockSurfaceObj from_rr_fmt;
 	BlockSurface_AllocCopyOrSetViewIfFormatMatches_Normalized(&from_rr_fmt,from,rr_fmt);
@@ -339,6 +349,7 @@ rrbool rrSurfaceDXTC_CompressBC5(BlockSurface * to, const BlockSurface * from, r
 	rrPixelFormat to_fmt = is_signed ? rrPixelFormat_BC5S : rrPixelFormat_BC5U;
 
 	RR_ASSERT_ALWAYS( from->count == to->count );
+	SIMPLEPROFILE_SCOPE_N(compress_bc5, from->count);
 
 	// if you try to encode signed ints to BC5U, you hit this assert :
 	//	-> should catch this and fail earlier
@@ -642,7 +653,8 @@ rrPixelFormat rrSurfaceDXTC_GetBCNDecompFormat(rrPixelFormat from_pixelFormat)
 
 	case rrPixelFormat_BC6U:
 	case rrPixelFormat_BC6S:
-		return rrPixelFormat_4_F32; // actually uses F16 internally ? _F16 ?
+		// there are arguments for using 3_F32 here, or 4_F16
+		return rrPixelFormat_4_F32;
 		
 	default:
 		RR_ASSERT_FAILURE_ALWAYS("rrSurfaceDXTC_GetBCNDecompFormat not BCN");

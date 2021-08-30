@@ -462,7 +462,7 @@ struct activity_1or4F_context
 	F32 activity_scaler;
 };
 
-static void OODLE_CALLBACK activity_1or4F_pass1_consumer(void * ctx_void, const void * pixels, rrPixelFormat pf, int x0, int y, int width)
+static void OODLE_CALLBACK activity_1or4F_pass1_consumer_default(void * ctx_void, const void * pixels, rrPixelFormat pf, int x0, int y, int width)
 {
 	activity_1or4F_context * ctx = (activity_1or4F_context *) ctx_void;
 	RR_ASSERT(pf == rrPixelFormat_4_F32); // this is for the low-pass data
@@ -555,6 +555,39 @@ static void OODLE_CALLBACK activity_1or4F_pass1_consumer(void * ctx_void, const 
 	}
 }
 
+static void OODLE_CALLBACK activity_1or4F_pass1_consumer_rgbnarrow(void * ctx_void, const void * pixels, rrPixelFormat pf, int x0, int y, int width)
+{
+	activity_1or4F_context * ctx = (activity_1or4F_context *) ctx_void;
+	RR_ASSERT_ALWAYS(ctx->mam == e_make_activity_1F_RGB); // only support 1F_RGB activity masks here
+
+	// make squared distance from source to lowpass :
+	const F32 * lowpass_row = (const F32 *) pixels;
+	const F32 * source_row = (const F32 *) rrSurface_SeekC(&ctx->source,x0,y);
+	F32 * activity_flt = (F32 *) rrSurface_Seek(&ctx->temp_activity,x0,y);
+
+	switch ( pf )
+	{
+	case rrPixelFormat_1_F32:
+		for LOOP(x,width)
+		{
+			F32 dsqr = fsquare(source_row[x] - lowpass_row[x]);
+			activity_flt[x] = dsqr;
+		}
+		break;
+	case rrPixelFormat_2_F32:
+		for LOOP(x,width)
+		{
+			F32 dsqr;
+			dsqr  = fsquare(source_row[x*2 + 0] - lowpass_row[x*2 + 0]);
+			dsqr += fsquare(source_row[x*2 + 1] - lowpass_row[x*2 + 1]);
+			activity_flt[x] = dsqr;
+		}
+		break;
+	default:
+		RR_BREAK(); // not supported here
+	}
+}
+
 static void OODLE_CALLBACK activity_1or4F_pass2_consumer(void * ctx_void, const void * pixels, rrPixelFormat pf, int x0, int y, int width)
 {
 	activity_1or4F_context * ctx = (activity_1or4F_context *) ctx_void;
@@ -569,12 +602,26 @@ void make_activity_mask_1or4F(rrSurface * pTo,const rrSurface & source_orig,EMak
 {
 	SIMPLEPROFILE_SCOPE(make_activity_mask);
 
+	const rrPixelFormatInfo * pfi = rrPixelFormat_GetInfo(source_orig.pixelFormat);
+
 	activity_1or4F_context ctx;
 	ctx.mam = mam;
 	rrPixelFormat pf = EMakeActivityMode_to_PF(mam);
 
-	// just change source format to 4 F32 :
-	rrSurface_AllocCopy_ChangeFormatNormalized(&ctx.source,&source_orig,rrPixelFormat_4_F32);
+	// default to the standard activity pass1 consumer and pixel format
+	rrPixelConsumerFunc * activity_pass1_consumer = activity_1or4F_pass1_consumer_default;
+	rrPixelFormat activity_pass1_srcfmt = rrPixelFormat_4_F32;
+
+	// when asked for a 1-channel RGB activity from a 1- or 2-channel format, we don't need to blow up
+	// the input data to 4xF32
+	if ( mam == e_make_activity_1F_RGB && 1 <= pfi->channels && pfi->channels <= 2 )
+	{
+		activity_pass1_consumer = activity_1or4F_pass1_consumer_rgbnarrow;
+		activity_pass1_srcfmt = RR_MAKE_PIXELFORMAT_SIMPLE(pfi->channels,RR_PIXELFORMAT_TYPE_F32);
+	}
+
+	// change source format to our chosen source format
+	rrSurface_AllocCopy_ChangeFormatNormalized(&ctx.source,&source_orig,activity_pass1_srcfmt);
 
 	// make lowpass and then initial activity in one go
 	// preferably without the 4xF32 data ever hitting memory
@@ -593,13 +640,12 @@ void make_activity_mask_1or4F(rrSurface * pTo,const rrSurface & source_orig,EMak
 
 	// the old code left signed formats at their original scale, whereas now (with normalized)
 	// processing they're 2x the value range, so compensate for this
-	const rrPixelFormatInfo * pfi = rrPixelFormat_GetInfo(source_orig.pixelFormat);
 	if ( pfi->isSigned && ! pfi->isFloat )
 		ctx.activity_scaler *= 0.5f;
 
 	// now run both passes
 	// pass 1 is initial activity
-	rrSurface_MakeGaussianBlurredWithConsumer(ctx.source,lowpass_sigma,activity_1or4F_pass1_consumer,&ctx);
+	rrSurface_MakeGaussianBlurredWithConsumer(ctx.source,lowpass_sigma,activity_pass1_consumer,&ctx);
 
 	// pass 2 is blur activity to spread around then "preprocess" (for consumer, which is a postprocess from our vantage point)
 	rrSurface_MakeGaussianBlurredWithConsumer(ctx.temp_activity,activity_blur_sigma,activity_1or4F_pass2_consumer,&ctx);

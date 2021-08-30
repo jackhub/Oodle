@@ -169,8 +169,16 @@ IDOC typedef OOSTRUCT OodleTex_Surface
    layout, with a configurable stride between rows, in case the source image has extra
    data at the end of rows for alignment or other reasons.
 
-   _rowStrideBytes_ must be positive and >= _width_ * pixel bytes
+   _rowStrideBytes_ must be positive and >= _width_ * pixel bytes.
+   _width_ and _height_ must be positive and at most $OODLETEX_MAX_SURFACE_DIMENSION.
 */
+
+#define OODLETEX_MAX_SURFACE_DIMENSION 16384 IDOC
+/* Maximum dimensions of an OodleTex_Surface in either direction (width or height).
+
+   Surfaces must not be larger than this on any axis.
+*/
+
 
 #define OodleTex_Surface_NumBlocks(surf)	((( (surf)->width + 3 )/4)*(( (surf)->height + 3 )/4))	IDOC
 /* Number of 4x4 blocks in an OodleTex_Surface
@@ -285,6 +293,7 @@ IDOC typedef enum OodleTex_RDO_ErrorMetric
 	OodleTex_RDO_ErrorMetric_Default = 0, // Default is Perceptual
 	OodleTex_RDO_ErrorMetric_RMSE_RGBA = 1,
 	OodleTex_RDO_ErrorMetric_Perceptual_RGBA = 2,
+	OodleTex_RDO_ErrorMetric_Max = 2,
 	OodleTex_RDO_ErrorMetric_Force32 = 0x40000000
 } OodleTex_RDO_ErrorMetric;
 /* Choose the way errors are scored in OodleTex_EncodeBCN_RDO.
@@ -316,6 +325,114 @@ IDOC typedef enum OodleTex_RDO_ErrorMetric
 	color, usually separating them by using RGB_A will be better.
 
 */
+
+IDOC typedef enum OodleTex_RDO_UniversalTiling
+{
+	OodleTex_RDO_UniversalTiling_Disable = 0,	// No universal tiling, the default. This option must be used when an $OodleTex_Layout is specified.
+	OodleTex_RDO_UniversalTiling_256KB = 1,		// Universal tiling with 256KB blocks
+	OodleTex_RDO_UniversalTiling_64KB = 2,		// Universal tiling with 64KB blocks
+	OodleTex_RDO_UniversalTiling_Max = 2,
+	OodleTex_RDO_UniversalTiling_Force32 = 0x40000000
+} OodleTex_RDO_UniversalTiling;
+/* Enables universal tiling, when desired.
+
+	Many platforms, especially game consoles, expose GPU-specific native image layouts that employ some kind
+	of texture tiling scheme. This can be targeted directly via $OodleTex_Layout, but this means that multi-platform
+	projects need to potentially do separate RDO texture encodes for every target.
+
+	The primary effect of native texture layouts as far as Oodle Texture is concerned is that large textures
+	usually end up being stored as a sequence of large rectangular 2D tiles, instead of scanline by scanline.
+	There is also reordering within those tiles but the effect on RDO encodes and compression performance is
+	relatively minor.
+
+	Universal tiling is a compromise: Oodle Texture internally processes a texture as individual tiles of the given
+	size. For example, 256KB universal tiling for BC7 textures treats a 2D square of 128x128 blocks as a unit.
+	However, both the input and output surfaces passed to Oodle Texture are still in the usual linear, row-major
+	order.
+
+	These textures can then be transformed into a number of platform-specific native orders and will in general
+	result in noticeably higher compression than if the texture had been encoded in the default linear order,
+	although generally somewhat worse than if the actual native $OodleTex_Layout had been used. Linear textures
+	using Universal Tiling will on average compress somewhat worse than regular linear layout textures on platforms
+	that store assets this way (e.g. PC or Mac), but not by much.
+
+	This makes it possible to cache a single RDO encode in universal tiling order and share the results between
+	multiple targets with different native texture tiling schemes, at a considerably saving in overall encode time.
+
+	In general, we've found 256KB block size to give the best overall trade-off across platforms, provided that
+	compression is done on independent chunks that are 256KB or larger (uncompressed). If you are paging and
+	decompressing data in smaller units, consider using the 64KB variant instead. See "$OodleTex_About_UniversalTiling"
+	in the "About" section of the documentation for more information.
+*/
+
+IDOC typedef enum OodleTex_RDO_Flags
+{
+	OodleTex_RDO_Flags_None = 0,
+	OodleTex_RDO_Flags_Force32 = 0x40000000
+} OodleTex_RDO_Flags;
+/* Binary flags for the Oodle Texture RDO encode.
+
+	Currently, none are defined. Use OodleTex_RDO_Flags_None.
+*/
+
+IDOC typedef OOSTRUCT OodleTex_RDO_Options
+{
+	OodleTex_EncodeEffortLevel		effort;		// Higher effort levels give better (smaller/higher quality) results but take longer to encode
+	OodleTex_RDO_ErrorMetric		metric; 	// Choice of error metric determines what the encoder focuses on
+	OodleTex_BCNFlags				bcn_flags;	// General BCn encoding options
+	OodleTex_RDO_UniversalTiling	universal_tiling;	// Universal tiling mode
+	OodleTex_RDO_Flags				rdo_flags;	// RDO-specific encoding options
+	
+	OO_BOOL							use_bc3_alpha_lambda;   // should bc3_alpha_lambda value be used (else use rgb lambda for alpha)
+	OO_S32							bc3_alpha_lambda;		// Higher lambda settings give bigger size reductions but reduce visual fidelity
+
+	OO_U32							not_yet_used_zero_me[8]; // fill with zero
+
+} OodleTex_RDO_Options;
+/* Detailed RDO encoding options for use with OodleTex_EncodeBCN_RDO_Ex.
+
+	Initializing with = { } (zero-init) gives defaults for everything.
+
+	_effort_ controls RDO encode effort. Lower-effort encodes are faster but produce slightly worse quality
+	and compression ratio. The default is to use "High" effort level. "Normal" effort level typically reduces
+	RDO encode time by an average factor of around 1.5 to 2 relative to "High". "Low" is faster by the same amount
+	and reduces quality further. All three levels are meant to still give good quality; our recommendation is to
+	use "Normal" or "Low" during iteration and day-to-day work and reserve "High" levels for shipping builds and
+	overnight jobs.
+
+	_metric_ chooses the error metric the encoder targets during RD optimization, one of $OodleTex_RDO_ErrorMetric.
+	Typically $OodleTex_RDO_ErrorMetric_Default.
+
+	_bcn_flags_ enables format-specific BCn encoding options as per $OodleTex_BCNFlags.
+
+	_universal_tiling_ enables universal tiling mode; see $OodleTex_RDO_UniversalTiling for a short description
+	and "$OodleTex_About_UniversalTiling" for more details.
+
+	_rdo_flags_ is intended for future extension to allow us to add flags controlling RDO encoder operation.
+	For now, none are defined; pass OodleTex_RDO_Flags_None.
+
+	_use_bc3_alpha_lambda_ and _bc3_alpha_lambda_: when use_bc3_alpha_lambda is false (default), the argument lambda
+	passed to $OodleTex_EncodeBCN_RDO_Ex is used for both RGB and A channels.
+	When use_bc3_alpha_lambda is true, the lambda argument is used for the RGB channels and
+	bc3_alpha_lambda is used for the A channel. RDO on the BC3 alpha channel can be disabled
+	entirely by setting use_bc3_alpha_lambda=true, bc3_alpha_lambda=0. These options
+	currently only apply to BC3.
+
+	_not_yet_used_zero_me_ is room for future extensions and currently ignored. Initialize to 0.
+*/
+
+#define OODLETEX_JOBS_DEFAULT  ( 0) IDOC
+/* Use all the installed threads
+
+	Value for num_job_threads that means to use all the installed threads
+*/
+
+#define OODLETEX_JOBS_DISABLE  (-1) IDOC
+/* Run single-threaded
+
+	Value for num_job_threads that means to run single-threaded on the main thread.
+*/
+
 
 //idoc(parent,OodleAPI_TextureLayout)
 
@@ -368,6 +485,10 @@ IDOC OOFUNC1 const char * OOFUNC2 OodleTex_BC_GetName(OodleTex_BC bcn);
 /* Provides a string naming a OodleTex_BC enum
 */
 
+IDOC OOFUNC1 const char * OOFUNC2 OodleTex_RDO_UniversalTiling_GetName(OodleTex_RDO_UniversalTiling tiling);
+/* Provides a string naming a OodleTex_RDO_UniversalTiling enum
+*/
+
 IDOC OOFUNC1 OO_S32 OOFUNC2 OodleTex_BC_BytesPerBlock(OodleTex_BC bcn);
 /* Get number of bytes per block of BCN compressed texture.
 
@@ -410,7 +531,7 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_LinearSurfaces(
 	$:layout			$OodleTex_Layout describing physical arrangement of blocks in _to_bcn_ (may be NULL in certain cases)
 	$:level				encode effort level to dial encode time vs quality
 	$:flags				bit flags for additional options, see $OodleTex_BCNFlags
-	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding (0 for all)
+	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding ($OODLETEX_JOBS_DEFAULT for all, $OODLETEX_JOBS_DISABLE for single-threaded)
 	$:jobify_user_ptr	user context passed back to plugin job system
 	$:return			$OodleTex_Err indicating the error condition, or $OodleTex_Err_OK on success.
 
@@ -447,7 +568,7 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_Blocks(
 	$:from_format		format of pixels in _from_pixel_surface_
 	$:level				encode effort level to dial encode time vs quality
 	$:flags				bit flags for additional options, see $OodleTex_BCNFlags
-	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding (0 for all)
+	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding ($OODLETEX_JOBS_DEFAULT for all, $OODLETEX_JOBS_DISABLE for single-threaded)
 	$:jobify_user_ptr	user context passed back to plugin job system
 	$:return			$OodleTex_Err indicating the error condition, or $OodleTex_Err_OK on success.
 	
@@ -458,9 +579,10 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_Blocks(
 	_from_pixel_blocks_ should be an array of 16-pixel (4x4) blocks;
 	_to_bcn_surface_ should be allocated to at least num_blocks * $OodleTex_BC_BytesPerBlock.
 
-	EncodeBCN will use multiple threads if a thread job system is installed via $OodleTex_Plugins_SetJobSystemAndCount
-	_num_job_threads_ should typically be set to 0 to use all workers installed, but a different number can be
-	passed here to override what was set in SetJobSystemAndCount.
+	EncodeBCN will use multiple threads if a thread job system is installed via $OodleTex_Plugins_SetJobSystemAndCount.
+	_num_job_threads_ should typically be set to $OODLETEX_JOBS_DEFAULT to use all workers installed, but a different
+	number can be passed here to override what was set in SetJobSystemAndCount, or single-threaded execution
+	on the current thread can be forced by passing $OODLETEX_JOBS_DISABLE.
 
 	EncodeBCN produces the same encoding as $OodleTex_EncodeBCN_RDO with lambda=0
 
@@ -477,7 +599,7 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
     int rdo_lagrange_lambda,OodleTex_BCNFlags flags,
 	OodleTex_RDO_ErrorMetric rdo_metric,
 	int num_job_threads,void * jobify_user_ptr);
-/* Write the BCN encoding of the given pixels, with rate-distortion optimization.
+/* Write the BCN encoding of the given pixels, with rate-distortion optimization (old API).
 
 	$:to_bcn			which $OodleTex_BC BCN format to write
 	$:to_bcn_surface	memory to write BCN encoding to
@@ -489,13 +611,15 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 	$:rdo_lagrange_lambda	lagrange parameter to control the quality vs size tradeoff of RDO, often a value of $OodleTex_RDOLagrangeLambda
 	$:flags				bit flags for additional options, see $OodleTex_BCNFlags
 	$:metric			error metric to use for distortion in RD, typically $OodleTex_RDO_ErrorMetric_Default
-	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding (0 for all)
+	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding ($OODLETEX_JOBS_DEFAULT for all, $OODLETEX_JOBS_DISABLE for single-threaded)
 	$:jobify_user_ptr	user context passed back to plugin job system
 	$:return			$OodleTex_Err indicating the error condition, or $OodleTex_Err_OK on success.
+
+	This entry point is provided for compatibility; newer code should prefer $OodleTex_EncodeBCN_RDO_Ex.
 	
 	$RateDistortionOptimization creates a BCN encoding such that it is smaller after Kraken compression.
 	The smaller the after-compression result, the more error is introduced in the BCN encoding.  This quality vs
-	size tradeoff is controlled by _rdo_lagrange_lambda_ 
+	size tradeoff is controlled by _rdo_lagrange_lambda_.
 	
 	_rdo_lagrange_lambda_ is a scalar that provides fine control of the rate-quality balance.  
 	$OodleTex_RDOLagrangeLambda provides some example standard values.
@@ -518,10 +642,75 @@ IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 	
 	_to_bcn_surface_ should be allocated to at least _num_blocks_ * $OodleTex_BC_BytesPerBlock.
 
-	EncodeBCN will use multiple threads if a thread job system is installed via $OodleTex_Plugins_SetJobSystemAndCount
-	_num_job_threads_ should typically be set to 0 to use all workers installed, but a different number can be
-	passed here to override what was set in SetJobSystemAndCount.
+	EncodeBCN_RDO will use multiple threads if a thread job system is installed via $OodleTex_Plugins_SetJobSystemAndCount.
+	_num_job_threads_ should typically be set to $OODLETEX_JOBS_DEFAULT to use all workers installed, but a different
+	number can be passed here to override what was set in SetJobSystemAndCount, or single-threaded execution
+	on the current thread can be forced by passing $OODLETEX_JOBS_DISABLE.
+
+	_OodleTex_EncodeBCN_RDO_ is equivalent to calling _OodleTex_EncodeBCN_RDO_Ex_ with OodleTex_EncodeEffortLevel_High and
+	all other OodleTex_RDO_Options as default.
+	
+	_OodleTex_EncodeBCN_RDO_ uses OodleTex_EncodeEffortLevel_High to maintain previous behavior.  We recommend the new
+	default OodleTex_EncodeEffortLevel_Normal for faster encodings and only slightly lower quality.
+
 */	
+
+IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO_Ex(
+	OodleTex_BC to_bcn,void * to_bcn_blocks,OO_SINTa num_blocks,
+	const OodleTex_Surface * from_surfaces,OO_SINTa num_from_surfaces,OodleTex_PixelFormat from_format,
+	const OodleTex_Layout * layout,
+	int rdo_lagrange_lambda,
+	const OodleTex_RDO_Options * options,
+	int num_job_threads,void * jobify_user_ptr);
+/* Write the BCN encoding of the given pixels, with rate-distortion optimization (new API).
+
+	$:to_bcn			which $OodleTex_BC BCN format to write
+	$:to_bcn_surface	memory to write BCN encoding to
+	$:num_blocks		number of blocks in output _to_bcn_blocks_
+	$:from_surfaces		array of $OodleTex_Surface instances for source pixels, in format _from_format_
+	$:num_from_surfaces	number of surfaces in _from_surfaces_
+	$:from_format		format of pixels in _from_surfaces_
+	$:layout			$OodleTex_Layout describing physical arrangement of blocks in _to_bcn_ (may be NULL in certain cases)
+	$:rdo_lagrange_lambda	lagrange parameter to control the quality vs size tradeoff of RDO, often a value of $OodleTex_RDOLagrangeLambda
+	$:options			$OodleTex_RDO_Options with further encoding options.
+	$:num_job_threads	number of plugin job system threads to use for multi-threaded encoding ($OODLETEX_JOBS_DEFAULT for all, $OODLETEX_JOBS_DISABLE for single-threaded)
+	$:jobify_user_ptr	user context passed back to plugin job system
+	$:return			$OodleTex_Err indicating the error condition, or $OodleTex_Err_OK on success.
+
+	$RateDistortionOptimization creates a BCN encoding such that it is smaller after Kraken compression.
+	The smaller the after-compression result, the more error is introduced in the BCN encoding.  This quality vs
+	size tradeoff is controlled by _rdo_lagrange_lambda_. This is the new entry point for the encoder with
+	more encoder options.
+
+	_rdo_lagrange_lambda_ is a scalar that provides fine control of the rate-quality balance.
+	$OodleTex_RDOLagrangeLambda provides some example standard values.
+
+	_rdo_lagrange_lambda_ = 0 means minimize distortion only, which produces the same encoding as $OodleTex_EncodeBCN_Blocks.
+	As lambda gets higher, more effort is put into reducing rate at the cost of higher distortion.
+
+	_options_ allows specifying more encoder options like the RDO effort level (controlling encoder speed).
+	This is the major difference between this function and $OodleTex_EncodeBCN_RDO.
+
+	Reads one or more surfaces _from_surfaces_ in _from_format_, writes _to_bcn_blocks_ in _to_bcn_ format.
+
+	When _layout_ is NULL, the encoder produces blocks for all surfaces in row-major order.
+	In that case, [num_blocks] must be the sum of $OodleTex_Surface_NumBlocks for all surfaces.
+	Blocks for all surfaces are assumed to be consecutive.
+
+	Specifying a _layout_ enables handling much more complicated scenarios such as interleaved hardware
+	layouts for mip maps, texture arrays, cube maps or volume textures. Especially game consoles often
+	expose the actual memory layout used by the hardware, which frequently interleaves data from multiple
+	2D source images in complicated ways. When a _layout_ is specified, _num_blocks_ must match the number
+	of blocks specified during $OodleTex_Layout_SetBlockLayout, and _num_from_surfaces_ must match the
+	number of surfaces that make up said layout.
+
+	_to_bcn_surface_ should be allocated to at least _num_blocks_ * $OodleTex_BC_BytesPerBlock.
+
+	EncodeBCN_RDO will use multiple threads if a thread job system is installed via $OodleTex_Plugins_SetJobSystemAndCount.
+	_num_job_threads_ should typically be set to $OODLETEX_JOBS_DEFAULT to use all workers installed, but a different
+	number can be passed here to override what was set in SetJobSystemAndCount, or single-threaded execution
+	on the current thread can be forced by passing $OODLETEX_JOBS_DISABLE.
+*/
 
 IDOC OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_DecodeBCN_Blocks(
 	void * to_pixel_blocks,OodleTex_PixelFormat to_format,OO_SINTa num_blocks,

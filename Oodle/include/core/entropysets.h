@@ -46,6 +46,11 @@ enum { ENTROPYSET_SYM_NOT_PRESENT_CL = 11<<ENTROPYSET_CODELEN_ONE_BIT_SHIFT };
 enum { ENTROPYSET_SYM_PRESENT_MAX_CL = 11<<ENTROPYSET_CODELEN_ONE_BIT_SHIFT };
 
 
+// used in calculation of order0_codelen_bits
+// invSum is (1<<ENTROPYSET_INVSUM_SHIFT)/sum
+//
+// want this fairly high to reduce truncation error
+enum { ENTROPYSET_INVSUM_SHIFT = 30 };
 
 // compute codelen of sending [ptr,len] bytes with histo1 & histo2 probability models
 //	and return the difference
@@ -82,6 +87,9 @@ void entropysets_histo_to_codelens(const Histo256 & histo,SINTa histo_sum,
 //	note return value is in *bits* not "entropyset codelen"
 U32 entropysets_order0_codelen_bits(const Histo256 & histo,SINTa sumCounts);
 
+// SSE4 version. Only present on x86 targets.
+U32 entropysets_order0_codelen_bits_sse4(const Histo256 & histo,SINTa sumCounts);
+
 //===============================================================================
 
 struct entropyset
@@ -95,6 +103,8 @@ struct entropyset
 };
 
 typedef U32 (histo_cost_bits_func_type)(const Histo256 & histo,SINTa sumCounts);
+
+histo_cost_bits_func_type * entropysets_order0_codelen_bits_cpudetect();
 
 struct rrArenaAllocator;
 

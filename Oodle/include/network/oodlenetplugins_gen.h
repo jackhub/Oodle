@@ -72,6 +72,10 @@ IDOC OODEFFUNC typedef OO_U64 (OODLE_CALLBACK t_fp_OodleNet_Plugin_RunJob)( t_fp
 
 	fp_job should not run until all the dependencies are done.  This function should not delete the dependencies.
 
+	RunJob must be callable from within an Oodle Job, i.e. jobs may spawn their own sub-jobs directly.
+	However, the matching WaitJob calls will only ever occur on the thread that called the
+	internally threaded Oodle API function.
+
 	See $Oodle_About_Job_Threading_Plugins
 */
 

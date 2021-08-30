@@ -798,10 +798,12 @@ U32 DXT1_FindIndices(const rrColorBlock4x4 & block, rrColor32BGRA palette[4],rrD
 		best = MinS32_SSE2(best, _mm_add_epi32(d3, const32_3));
 
 		// Now have 2b best color index in low bits of every lane
-		// and squared error in top 30 bits; accumulate error first
+		// and squared error in top 30 bits.
+
+		// Accumulate error
 		error_sum = _mm_add_epi32(error_sum, _mm_srli_epi32(best, 2));
 
-		// Now extract index bits fancily (NOTE slightly wasteful, should do this for two rows at once)
+		// Extract index bits fancily (NOTE slightly wasteful, should do this for two rows at once)
 		Vec128 best_inds = _mm_and_si128(best, const32_3);
 		Vec128 packed = _mm_packs_epi32(best_inds, _mm_setzero_si128()); // now have 16-bit fields
 		Vec128 magicked = _mm_mullo_epi16(packed, magic_mul); // move bit 0 of index into bit 7 of 16b lane, and bit 1 of index into bit 15

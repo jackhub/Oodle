@@ -5,7 +5,7 @@
 // of this source file is governed by such agreement.
 
 
-/*#include "oodlecore.h"
+#include "oodlecore.h"
 
 #include "oodlestaticlzp.h"
 
@@ -30,7 +30,7 @@ OODLE_NS_START
 	{
 		test();
 	}
-
+*/
 
 OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Size()
 {		
@@ -64,9 +64,9 @@ rrprintf("OodleNetwork1TCP_State_Size\n");
 	entropyset_codelens_U16_256 codelens;
 
 	entropysets_histo_to_codelens(histo,histo_sum,&codelens);
-/*
+/**/
 
 	return 3;
 }
 
-OODLE_NS_END*/
+OODLE_NS_END

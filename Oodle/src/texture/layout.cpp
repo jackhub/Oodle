@@ -11,7 +11,7 @@
 OODLE_NS_START
 
 OodleTex_Layout::OodleTex_Layout(SINTa block_size)
-	: m_block_size(block_size), m_nblocks(0), m_block_ids(NULL)
+	: m_tile_w(0), m_tile_h(0), m_block_size(block_size), m_nblocks(0), m_block_ids(NULL)
 {
 	RR_ASSERT(block_size == 8 || block_size == 16);
 }
@@ -113,6 +113,45 @@ OodleTex_Err OodleTex_Layout::SetBlockLayout(const void * reordered_block_ids, S
 
 	m_nblocks = num_reordered_blocks;
 	m_block_ids = new_blocks;
+	return OodleTex_Err_OK;
+}
+
+OodleTex_Err OodleTex_Layout::InitUniversal(OodleTex_RDO_UniversalTiling tiling)
+{
+	const int BLOCK_SIZE = 4;
+
+	RR_ASSERT( m_tile_w == 0 && m_tile_h == 0 ); // not initialized as pure tiled yet
+	RR_ASSERT( m_nblocks == 0 && m_block_ids == 0 ); // not a conventional layout either
+
+	// Our canonical sizing is for 16B blocks; formats with 8B blocks use
+	// tiles of twice the width, other block sizes are unsupported.
+	int width_scaling = 0;
+	switch ( m_block_size )
+	{
+	case 8:		width_scaling = 2; break;
+	case 16:	width_scaling = 1; break;
+	default:	return OodleTex_Err_Internal;
+	}
+
+	switch ( tiling )
+	{
+	case OodleTex_RDO_UniversalTiling_256KB:
+		// 256K = 16384 blocks when blocks are 16B, which is 128x128 blocks.
+		// We give tile widths in pixels so multiply by block size.
+		m_tile_w = 128 * BLOCK_SIZE * width_scaling;
+		m_tile_h = 128 * BLOCK_SIZE;
+		break;
+
+	case OodleTex_RDO_UniversalTiling_64KB:
+		// 64K = 4096 blocks when blocks are 16B, which is 64x64.
+		m_tile_w = 64 * BLOCK_SIZE * width_scaling;
+		m_tile_h = 64 * BLOCK_SIZE;
+		break;
+
+	default:
+		return OodleTex_Err_BadUniversalTiling;
+	}
+
 	return OodleTex_Err_OK;
 }
 

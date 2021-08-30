@@ -13,12 +13,14 @@ RR_NAMESPACE_START
 
 enum rrDXTCLevel
 {
-	// realtime = -1 ?
-	rrDXTCLevel_VeryFast=0,
-	rrDXTCLevel_Fast=1,
-	rrDXTCLevel_Slow=2,
-	rrDXTCLevel_VerySlow=3,
-	rrDXTCLevel_Reference=4, // too slow to be practical
+	// levels 1,2,3 are the public API levels
+	//	default is level 3 (VerySlow), max quality realistic level
+	//	"Reference" level 4 is max quality regardless of speed, to give us a target for VerySlow to aim for
+	rrDXTCLevel_VeryFast=0, // == 1 secret level in OodleTex_ API ; too low quality, not currently well optimized for this quality-speed tradeoff
+	rrDXTCLevel_Fast=1,		// == OodleTex_EncodeEffortLevel_Low
+	rrDXTCLevel_Slow=2,		// == OodleTex_EncodeEffortLevel_Normal
+	rrDXTCLevel_VerySlow=3, // == OodleTex_EncodeEffortLevel_High == OodleTex_EncodeEffortLevel_Default
+	rrDXTCLevel_Reference=4,// == 99 secret level in OodleTex_ API ; too slow to be practical, not a good time-quality tradeoff; just a max quality reference
 	rrDXTCLevel_Count=5,
 	rrDXTCLevel_Default = rrDXTCLevel_VerySlow // matches public API default
 };
@@ -52,6 +54,15 @@ enum rrDXTCOptions
 
 const char * rrDXTCLevel_GetName(rrDXTCLevel level);
 const char * rrDXTCOptions_GetName(rrDXTCOptions options);
+
+struct rrDXTCRD_Options
+{
+	void * config_override;
+	rrDXTCLevel effort;
+
+	bool use_bc3_alpha_lambda;
+	int bc3_alpha_lambda;
+};
 
 RR_NAMESPACE_END
 

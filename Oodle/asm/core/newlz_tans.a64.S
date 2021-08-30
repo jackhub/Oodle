@@ -155,7 +155,7 @@ MANGLE(oodle_newLZ_tans_a64_kern):
 		strb	w22, [x2, #9]							// TANS 3 emit
 		rev16	w25, w25								// TANS 4 sym->low byte
 		strb	w25, [x2, #10]!							// TANS 4 emit
-		subs	x3, x3, #10								// (nbytesleft -= DECS_PER_ITER) > 0
+		subs	x3, x3, #10								// (nbytesleft -= TANS_DECS_PER_ITER) > 0
 		ccmp	x4, x7, #2, gt							// && in0 <= in1
 		b.ls	.L10									// -> Main decode loop body
 .L9: // Post-decode

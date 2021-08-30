@@ -47,7 +47,6 @@ extern const U32 radtex_section_tbl[4][64]; // [ns][partition]
 extern const U64 radtex_subset_to_inds[3][64]; // [ns-1][partition]
 
 extern const BC7OptimalEndpoint radtex_bc7_optimal_endpoints_new[5][4][3][256]; // [mode][p_bits][index-1][256]
-extern const BC6CompandTableEntry bc6_compand[512];
 
 OODLE_NS_END
 

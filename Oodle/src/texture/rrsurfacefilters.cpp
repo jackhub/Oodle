@@ -16,6 +16,7 @@
 #include "rrlogutil.h"
 #include "templates/rrstl.h"
 #include "templates/rrvector_st.h"
+#include "threadprofiler.h"
 
 #include "newlz_simd.h"
 #ifdef DO_BUILD_SSE4
@@ -259,6 +260,8 @@ static void rrSurface_MakeGaussianBlurred_Sub_Strips(rrSurface * pTo,const rrSur
 	int nchan,
 	const F32 * filter,int filter_width)
 {
+	THREADPROFILESCOPE("MakeGaussianBlurred_Sub");
+
 	#ifdef RR_DO_ASSERTS
 	{
 	RR_ASSERT( nchan >= 1 && nchan <= 4 );

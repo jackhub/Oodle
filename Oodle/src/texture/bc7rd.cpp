@@ -28,6 +28,7 @@
 
 #include "rrsimpleprof.h"
 //#include "rrsimpleprofstub.h"
+#include "oodle2texint.h"
 
 //#define BC7RD_LAMBDA_SCALE 0.3125f // old
 // 04-30-2020 : lambda normalization
@@ -51,7 +52,200 @@
 
 #define BC7_BLOCK_ALIGN 32 // preferred alignment for decoded blocks.
 
+#define FINAL_MATRIX_CATEGORIES_UNMIXED			(8*64)
+#define FINAL_MATRIX_CATEGORIES_MIXED			(8)
+
 RR_NAMESPACE_START
+
+static const BC7_RD_Config c_config_levels[rrDXTCLevel_Count] =
+{
+	//rrDXTCLevel_VeryFast=0,	// == 1 secret level in OodleTex_ API ; too low quality, not currently well optimized for this quality-speed tradeoff
+	{
+		// block_encode_effort
+		rrDXTCLevel_Slow,
+		// core_fix_single_color_block
+		true,
+		// core_recompress_block_with_J_bias
+		true,
+		// core_disable_less_common_modes
+		true,
+		// core_endpoints_from_indices
+		false,
+		// MTF window size
+		80, 2,
+		// mtf_window_seed_most_common
+		true,
+		// do_ilm, ilm_hyperbola_max_index_product
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	256
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	512 // incremental gains and much slower
+		true, 80,
+		// do_bottom_up_merge
+		true,
+		// do_final_matrix, fm_mix_partitions
+		true, true,
+		// fm_combined_size_limit_sqrt
+		// #define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
+		// #define FINAL_MATRIX_SIZE_LIMIT	(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
+		// #define FINAL_MATRIX_SIZE_LIMIT	20000
+		60,
+		// do_final_optimize
+		true,
+	},
+
+	//rrDXTCLevel_Fast=1,		// == OodleTex_EncodeEffortLevel_Low
+	{
+		// block_encode_effort
+		rrDXTCLevel_Slow,
+		// core_fix_single_color_block
+		true,
+		// core_recompress_block_with_J_bias
+		true,
+		// core_disable_less_common_modes
+		true,
+		// core_endpoints_from_indices
+		false,
+		// MTF window size
+#ifdef _DEBUG
+		80, 2,
+#else
+		(128+16+3), 2,
+#endif
+		// mtf_window_seed_most_common
+		true,
+		// do_ilm, ilm_hyperbola_max_index_product
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	256
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	512 // incremental gains and much slower
+		true, (128+16+3),
+		// do_bottom_up_merge
+		true,
+		// do_final_matrix, fm_mix_partitions
+		true, true,
+		// fm_combined_size_limit_sqrt
+		// #define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
+		// #define FINAL_MATRIX_SIZE_LIMIT	(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
+		// #define FINAL_MATRIX_SIZE_LIMIT	20000
+		60,
+		// do_final_optimize
+		true,
+	},
+
+	//rrDXTCLevel_Slow=2,		// == OodleTex_EncodeEffortLevel_Normal
+	{
+		// block_encode_effort
+		rrDXTCLevel_VerySlow,
+		// core_fix_single_color_block
+		true,
+		// core_recompress_block_with_J_bias
+		true,
+		// core_disable_less_common_modes
+		true,
+		// core_endpoints_from_indices
+		false,
+		// MTF window size
+#ifdef _DEBUG
+		80, 2,
+#else
+		(256+64+16+3), 2,
+#endif
+		// mtf_window_seed_most_common
+		true,
+		// do_ilm, ilm_hyperbola_max_index_product
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	256
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	512 // incremental gains and much slower
+		true, 200,
+		// do_bottom_up_merge
+		true,
+		// do_final_matrix, fm_mix_partitions
+		true, true,
+		// fm_combined_size_limit_sqrt
+		// #define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
+		// #define FINAL_MATRIX_SIZE_LIMIT	(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
+		// #define FINAL_MATRIX_SIZE_LIMIT	20000
+		100,
+		// do_final_optimize
+		true,
+	},
+
+	//rrDXTCLevel_VerySlow=3,	// == OodleTex_EncodeEffortLevel_High == OodleTex_EncodeEffortLevel_Default
+	{
+		// block_encode_effort
+		rrDXTCLevel_VerySlow,
+		// core_fix_single_color_block
+		true,
+		// core_recompress_block_with_J_bias
+		true,
+		// core_disable_less_common_modes
+		true,
+		// core_endpoints_from_indices
+		true,
+		// MTF window size
+#ifdef _DEBUG
+		80, 64,
+#else
+		(256+64+16+3), (256+32+8+3),
+#endif
+		// mtf_window_seed_most_common
+		true,
+		// do_ilm, ilm_hyperbola_max_index_product
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	256
+		//#define HYPERBOLA_MAX_INDEX_PRODUCT	512 // incremental gains and much slower
+		true, 200,
+		// do_bottom_up_merge
+		true,
+		// do_final_matrix, fm_mix_partitions
+		true, true,
+		// fm_combined_size_limit_sqrt
+		// #define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
+		// #define FINAL_MATRIX_SIZE_LIMIT	(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
+		// #define FINAL_MATRIX_SIZE_LIMIT	20000
+		100,
+		// do_final_optimize
+		true,
+	},
+
+	//rrDXTCLevel_Reference=4	// == 99 secret level in OodleTex_ API ; too slow to be practical, not a good time-quality tradeoff; just a max quality reference
+	{
+		// block_encode_effort
+		rrDXTCLevel_VerySlow,
+		// core_fix_single_color_block
+		true,
+		// core_recompress_block_with_J_bias
+		true,
+		// core_disable_less_common_modes
+		true,
+		// core_endpoints_from_indices
+		true,
+		// MTF window size
+#ifdef _DEBUG
+		80, 64,
+#else
+		(256+64+16+3), (256+32+8+3),
+#endif
+		// mtf_window_seed_most_common
+		true,
+		// do_ilm, ilm_hyperbola_max_index_product
+		true, 512,
+		// do_bottom_up_merge
+		true,
+		// do_final_matrix, fm_mix_partitions
+		true, true,
+		// fm_combined_size_limit_sqrt
+		// #define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
+		// #define FINAL_MATRIX_SIZE_LIMIT	(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
+		// #define FINAL_MATRIX_SIZE_LIMIT	20000
+		100,
+		// do_final_optimize
+		true,
+	}
+};
+
+const BC7_RD_Config& bc7rd_get_config(rrDXTCLevel effort)
+{
+	//rrprintf("bc7rd_get_config: effort level=%d (%s)\n", effort, rrDXTCLevel_GetName(effort));
+
+	RR_ASSERT( 0 <= (int)effort && (int)effort < RR_ARRAY_SIZE(c_config_levels) );
+	return c_config_levels[effort];
+}
 
 struct bc7rd_blockinfo
 {
@@ -307,7 +501,18 @@ static void histogram_mode(BC7_ModeHisto * phisto,const BlockSurface * baseline_
 	for LOOP(bi,baseline_blocks->count)
 	{
 		const U8 * baseline_block_ptr = BlockSurface_SeekC(baseline_blocks,bi);
-		
+
+		// we don't want mode 5 (which is our mode of choice for solid-color blocks) to get
+		// a boost just because there's many flat areas, since non-flat blocks are very
+		// unlikely to benefit from this.
+		//
+		// NOTE(fg): tried this out while trying to diagnose a different issue; this
+		// doesn't seem to be the cause, is often slightly better, but also ends up
+		// noticeably worse on some textures. Not sure about this one, needs extra
+		// investigation.
+		//if ( bc7_is_encoded_single_color_block( baseline_block_ptr ) )
+		//	continue;
+
 		bc7bits bits = bc7bits_load(baseline_block_ptr);
 		int m = bc7bits_get_mode(bits);
 		
@@ -411,7 +616,103 @@ static void histogram_to_ssd_err_bias_J(BC7_Mode_ErrBias * ssd_err_bias_J, const
 
 #endif
 
-static int seed_past_blocks(bc7rd_windowentry * past_block_window,int window_size,const BlockSurface * baseline_blocks,BC7Flags flags)
+static bool record_candidates_enabled = false;
+static OodleTex_RecordEntry* record_entry = NULL;
+
+OOFUNC1 void OOFUNC2 OodleTex_InstallVisualizerCallback(OodleTex_RecordEntry* callback, int width, int height)
+{
+	record_entry = callback;
+	record_candidates_enabled=true;
+	int arr[3] = { 0,width,height };
+	record_entry(arr, sizeof(arr));
+}
+
+// @TODO: share this code with visualizer
+struct ActivityItem
+{
+	S32 itemtype;
+	float lambda;
+	const void* ptr;
+	float activity[16];
+};
+
+struct CandidateItem
+{
+	S32 itemtype;
+	float lambda;
+	const void* ptr;
+	S32 phase;
+	S32 mode;
+	S32 bset;
+	F32 D,R;
+	U8 color_data[16][4];
+	U32 padding; // due to 64-bit alignment
+};
+
+static void record_activity_block(F32 lambda, const BlockSurface* to_blocks, int bi, const ActivityBlock4x4& activity)
+{
+	if (!record_candidates_enabled) return;
+	const void* q = (void*)BlockSurface_SeekC(to_blocks, bi); // we use this to identify blocks so we can reassemble image from multiple chunks
+	ActivityItem item = { 1, lambda, q };
+	memcpy(item.activity, activity.values, sizeof(item.activity));
+	record_entry(&item, sizeof(item));
+}
+
+static void record_candidate_block(F32 lambda, int phase, const BlockSurface* to_blocks, int bi, const rrColorBlock4x4 & out_color, int mode, F32 D, F32 R, int bset=-1)
+{
+	if (!record_candidates_enabled) return;
+	const void *q = (void*) BlockSurface_SeekC(to_blocks, bi); // we use this to identify blocks so we can reassemble image from multiple chunks
+	CandidateItem item = { 2, lambda, q, phase, mode, bset, D, R };
+	memcpy(item.color_data, &out_color.colors[0], sizeof(item.color_data));
+	record_entry(&item, sizeof(item));
+}
+
+static void record_input_block_as_candidate(F32 lambda, int phase, const BlockSurface* to_blocks, const vector<bc7rd_blockinfo> &infos, int bi)
+{
+	if (!record_candidates_enabled) return;
+	record_candidate_block(lambda, phase, to_blocks, bi, infos[bi].colors, 255, 0., 512.);
+}
+
+static void record_candidate_block(F32 lambda, int phase, const BlockSurface* to_blocks, int bi, const U8 out_block[16], F32 D, F32 R, BC7Flags flags)
+{
+	if (!record_candidates_enabled) return;
+	RAD_ALIGN(U8, decomp_block[64], BC7_BLOCK_ALIGN);
+	bc7_decode_block4x4a(decomp_block, out_block, flags);
+	const rrColorBlock4x4* pc = (const rrColorBlock4x4*)decomp_block;
+	record_candidate_block(lambda, phase, to_blocks, bi, *pc, bc7bits_get_mode(bc7bits_load(out_block)), D, R);
+}
+
+static void record_candidate_block(F32 lambda, int phase, const BlockSurface* to_blocks, int bi, BC7BlockState st, F32 D, F32 R, BC7Flags flags)
+{
+	RAD_ALIGN(U8, decomp_block[64], BC7_BLOCK_ALIGN);
+	bc7enc_decode_state(&st, decomp_block, flags);
+	const rrColorBlock4x4* pc = (const rrColorBlock4x4*)decomp_block;
+	record_candidate_block(lambda, phase, to_blocks, bi, *pc, st.mode, D, R);
+}
+
+// this function takes the D and J values from infos[] and the colors from to_blocks;
+static void record_candidate_block_from_infos(F32 lambda, int phase, const BlockSurface* to_blocks, const vector<bc7rd_blockinfo> &infos, int bi, BC7Flags flags)
+{
+	const void* out_block = (void*)BlockSurface_SeekC(to_blocks, bi);
+	RAD_ALIGN(U8, decomp_block[64], BC7_BLOCK_ALIGN);
+	bc7_decode_block4x4a(decomp_block, out_block, flags);
+	const rrColorBlock4x4* pc = (const rrColorBlock4x4*)decomp_block;
+	record_candidate_block(lambda, phase, to_blocks, bi, *pc, bc7bits_get_mode(bc7bits_load((const U8*)out_block)), infos[bi].D, (infos[bi].J - infos[bi].D) / lambda);
+}
+
+// this function recomputes D from the output BC7 block, and doesn't know what R is.
+static void record_candidate_block_compute_D_unknown_R(F32 lambda, int phase, const BlockSurface* to_blocks, const vector<bc7rd_blockinfo> &infos, int bi, BC7Flags flags, const ActivityBlock4x4& activity, int set = -1)
+{
+	const rrColorBlock4x4& in_color = infos[bi].colors;
+	const void* out_block = (void*)BlockSurface_SeekC(to_blocks, bi);
+	RAD_ALIGN(U8, decomp_block[64], BC7_BLOCK_ALIGN);
+	bc7_decode_block4x4a(decomp_block, out_block, flags);
+	const rrColorBlock4x4* pc = (const rrColorBlock4x4*)decomp_block;
+	F32 D = VQD(in_color, *pc, activity);
+	record_candidate_block(lambda, phase, to_blocks, bi, *pc, bc7bits_get_mode(bc7bits_load((const U8*)out_block)), D, -1.0f, set);
+}
+
+static int seed_past_blocks(vector<bc7rd_windowentry>& past_block_window,const BlockSurface * baseline_blocks,BC7Flags flags)
 {
 	// take baseline encoding
 	//	find most common blocks (with indices zerod)
@@ -443,7 +744,7 @@ static int seed_past_blocks(bc7rd_windowentry * past_block_window,int window_siz
 	sort_and_count_uniques(&counting,blocks);
 	sort_bc7bits_and_count_compare_count_highest_first(&counting);
 	
-	counting.resize( RR_MIN(counting.size(),(size_t)window_size) );
+	counting.resize( RR_MIN(counting.size(),past_block_window.size()) );
 	
 	// remove singletons :
 	// maybe remove 2's also ?
@@ -510,14 +811,15 @@ static int seed_past_blocks(bc7rd_windowentry * past_block_window,int window_siz
 	return num_seeds;
 }
 	
-static void bc7_update_mtf_window(const bc7rd_windowentry * new_state,int lz_found_i,bc7rd_windowentry ** lz_window, int & lz_window_size, int max_lz_window_size)
+static void bc7_update_mtf_window(const bc7rd_windowentry * new_state,int lz_found_i,vector<bc7rd_windowentry *>& lz_window, int & lz_window_size)
 {
-	RR_ASSERT( lz_window_size <= max_lz_window_size );
+	RR_ASSERT( lz_window_size <= lz_window.size32() );
+	int move_to = 0;
 	
 	if ( lz_found_i < 0 )
 	{
 		// add it :
-		if ( lz_window_size < max_lz_window_size )
+		if ( lz_window_size < lz_window.size32() )
 			lz_window_size++;
 		
 		lz_found_i = lz_window_size-1;
@@ -537,10 +839,14 @@ static void bc7_update_mtf_window(const bc7rd_windowentry * new_state,int lz_fou
 		//*( lz_window[lz_found_i] ) = *new_state;
 	}
 
+	////NOTE(fg): this one's interesting
+	//move_to = lz_found_i / 4;
+
 	// MTF :
+	RR_ASSERT_ALWAYS( move_to <= lz_found_i);
 	bc7rd_windowentry * new_head = lz_window[lz_found_i]; 
-	memmove(lz_window+1,lz_window,lz_found_i*sizeof(lz_window[0]));
-	lz_window[0] = new_head;
+	memmove(&lz_window[move_to+1],&lz_window[move_to],(lz_found_i-move_to)*sizeof(lz_window[0]));
+	lz_window[move_to] = new_head;
 }
 
 
@@ -597,11 +903,13 @@ static F32 bc7rd_final_optimize_blockset_D(
 		// ?? VQD or just SSD ? -> it looks like probably SSD
 		//	(BC1RD is SSD)
 
-		//const ActivityBlock4x4 * pActivity = (const ActivityBlock4x4 *) BlockSurface_SeekC(activity_blocks,bi);
-		//tot_D += VQD(colors,orig_colors,*pActivity);
-		
+		#if 0
+		const ActivityBlock4x4 * pActivity = (const ActivityBlock4x4 *) BlockSurface_SeekC(activity_blocks,bi);
+		tot_D += VQD(colors,orig_colors,*pActivity);
+		#else		
 		U32 ssd = ColorBlock4x4_ComputeSSD_RGBA(colors,orig_colors);
-		tot_D += (F32)ssd;				
+		tot_D += (F32)ssd;
+		#endif
 	}
 	
 	return tot_D;
@@ -796,9 +1104,11 @@ static void bc7rd_final_optimize(BlockSurface * bc7_blocks,
 	const BlockSurface * activity_blocks,
 	const vector<bc7rd_blockinfo> & infos,
 	BC7Flags flags,
+	F32 lambda, // for OODLE_RECORD_CANDIDATE_BLOCKS
 	bool do_indices)
 {
 	// find sets of blocks that have the same indices/endpoints
+	RR_UNUSED_VARIABLE(lambda);
 	
 	// for each mode
 	//	 segregate into modes
@@ -897,6 +1207,8 @@ static void bc7rd_final_optimize(BlockSurface * bc7_blocks,
 						bits = bc7bits_andnot(bits,bits_mask);
 						bits = bc7bits_or(bits,new_bits);
 						bc7bits_store(block_ptr,bits);
+						if (record_candidates_enabled)
+							record_candidate_block_compute_D_unknown_R(lambda, do_indices ? 21 : 20, bc7_blocks, infos, bi, flags, *(const ActivityBlock4x4*) BlockSurface_SeekC(activity_blocks,bi), begin);
 					}
 				}
 			}
@@ -1216,13 +1528,6 @@ void bc7rd_static_rater::init(const BlockSurface * bc7_blocks)
 //	either for speed or quality, it's pretty meh
 //	but slight win for yes do cross-part
 
-//#define FINAL_MATRIX_CATEGORIES	(8*64) // don't mix partitions
-// you don't consider pairs from different categories
-
-// -> yes do cross-part
-#define FINAL_MATRIX_CATEGORIES	(8) // consider endp-indi mixes from different partitions
-// in theory this should be slower but higher quality
-	
 //bc7rd_recompute_rates_static_model
 //	changes infos[].J
 static void bc7rd_recompute_rates_static_model(BlockSurface * bc7_blocks,
@@ -1266,10 +1571,6 @@ static void bc7rd_recompute_rates_static_model(BlockSurface * bc7_blocks,
 		infos[bi].J = J;
 	}
 }
-	
-#define FINAL_MATRIX_SIZE_LIMIT_SQRT	100
-#define FINAL_MATRIX_SIZE_LIMIT		(FINAL_MATRIX_SIZE_LIMIT_SQRT*FINAL_MATRIX_SIZE_LIMIT_SQRT)
-//#define FINAL_MATRIX_SIZE_LIMIT	20000
 		
 static U32 bc7bits_and_count_index_or_zero(const vector<bc7bits_and_count> & vec,int i)
 {
@@ -1287,11 +1588,18 @@ struct bc7_final_state
 	F32 best_possible_D;
 };
 
+template<typename T>
+static T sqr(T x)
+{
+	return x * x;
+}
+
 static void bc7rd_final_matrix(BlockSurface * bc7_blocks,
 	const BlockSurface * activity_blocks,
 	vector<bc7rd_blockinfo> & infos,
 	F32 lambda,
-	BC7Flags flags)
+	BC7Flags flags,
+	const BC7_RD_Config & config)
 {
 	SIMPLEPROFILE_SCOPE(final_matrix);
 		
@@ -1310,29 +1618,31 @@ static void bc7rd_final_matrix(BlockSurface * bc7_blocks,
 	// mainly on red_blue
 	// there's not a big difference
 	
-	vector<bc7bits> v_indices[FINAL_MATRIX_CATEGORIES];
-	vector<bc7bits> v_endpoints_pb[FINAL_MATRIX_CATEGORIES];
-	
+	vector<vector<bc7bits> > v_indices;
+	vector<vector<bc7bits> > v_endpoints_pb;
+
+	int final_matrix_categories = config.fm_mix_partitions ?
+		FINAL_MATRIX_CATEGORIES_MIXED :
+		FINAL_MATRIX_CATEGORIES_UNMIXED;
+	v_indices.resize(final_matrix_categories);
+	v_endpoints_pb.resize(final_matrix_categories);
+
 	for LOOP(bi,nb)
 	{
 		const U8 * block_ptr = BlockSurface_SeekC(bc7_blocks,bi);	
 		bc7bits bits = bc7bits_load(block_ptr);
-				
 		int mode = bc7bits_get_mode(bits);
-		
-		#if FINAL_MATRIX_CATEGORIES > 8
-		int part = bc7bits_get_part(bits,mode);
-		int category = mode + part*8;
-		#else
-		int category = mode;
-		#endif
-		
-		RR_ASSERT( category < FINAL_MATRIX_CATEGORIES );
 
-		v_indices[   category].push_back( bc7bits_extract_indices(bits,false) );
+		int category = config.fm_mix_partitions ?
+			mode :
+			mode + 8*bc7bits_get_part(bits,mode);
+
+		RR_ASSERT( category < final_matrix_categories );
+
+		v_indices[     category].push_back( bc7bits_extract_indices(bits,false) );
 		v_endpoints_pb[category].push_back( bc7bits_xor_assert_on(bits, v_indices[category].back() ) );
 	}
-		
+
 	// log of number of blocks in {mode,part} :
 	//	very clumpy
 	//	there are usually 2 or 3 {mode,part} categories that have almost all the blocks
@@ -1341,11 +1651,11 @@ static void bc7rd_final_matrix(BlockSurface * bc7_blocks,
 	vector<bc7bits_and_count>  vc_indices;
 	vector<bc7bits_and_count>  vc_endpoints_pb;
 	
-	vc_indices.reserve( bc7bits_vectors_max_size(v_indices,FINAL_MATRIX_CATEGORIES) );
-	vc_endpoints_pb.reserve( bc7bits_vectors_max_size(v_endpoints_pb,FINAL_MATRIX_CATEGORIES) );
+	vc_indices.reserve( bc7bits_vectors_max_size(v_indices.data(),final_matrix_categories) );
+	vc_endpoints_pb.reserve( bc7bits_vectors_max_size(v_endpoints_pb.data(),final_matrix_categories) );
 		
 	//rrprintf("\n{ ");
-	for LOOP(cat,FINAL_MATRIX_CATEGORIES)
+	for LOOP(cat,final_matrix_categories)
 	{
 		//int nofc = v_indices[cat].size32();
 		//if ( nofc > 20 ) rrprintf("%d (%.1f%%),",nofc,100.0*nofc/nb);
@@ -1460,7 +1770,7 @@ static void bc7rd_final_matrix(BlockSurface * bc7_blocks,
 	// combined is now the matrix
 	// limit its size :
 		
-	int matrix_size = RR_MIN( combined.size32() , FINAL_MATRIX_SIZE_LIMIT );
+	int matrix_size = RR_MIN( combined.size32() , sqr(config.fm_combined_size_limit_sqrt) );
 	combined.resize( matrix_size );
 	
 	//rrprintfvar(matrix_size);
@@ -2579,23 +2889,29 @@ bool BC7_RD(BlockSurface * to_blocks,
 	const BlockSurface * from_blocks,
 	const BlockSurface * baseline_blocks,
 	const BlockSurface * activity_blocks,
-	int lambdai,rrDXTCOptions options)
+	int lambdai,rrDXTCOptions options,
+	const rrDXTCRD_Options & rdoptions)
 {
 	SIMPLEPROFILE_SCOPE(bc7rd);
+
+	//rrprintf("BC7_RD: effort level=%d (%s)\n", rdoptions.effort, rrDXTCLevel_GetName(rdoptions.effort));
 	
 	RR_ASSERT( to_blocks->pixelFormat == rrPixelFormat_BC7 );
 	RR_ASSERT( baseline_blocks->pixelFormat == rrPixelFormat_BC7 );
 	RR_ASSERT( from_blocks->pixelFormat == rrPixelFormat_R8G8B8A8 );
 	RR_ASSERT( to_blocks->count == from_blocks->count );
-		
+
 	const F32 lambda = lambdai * BC7RD_LAMBDA_SCALE;
 	
-	rrDXTCLevel level = rrDXTCLevel_VerySlow;
+	const BC7_RD_Config & config = rdoptions.config_override
+		? *(const BC7_RD_Config *) rdoptions.config_override
+		: bc7rd_get_config(rdoptions.effort);
+
 	// options can have IGNORE_ALPHA for BC7RGB
 	//	 if so, orig image A was already set to 255 in TexPub
 	BC7EncOptions opt;
-	bc7_enc_options_set(&opt,level,options);
-		
+	bc7_enc_options_set(&opt,config.block_encode_effort,options);
+
 	const int nblocks = from_blocks->count;
 	
 	RR_ASSERT( nblocks <= 16*1024 );
@@ -2605,7 +2921,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 	
 	vector<bc7rd_blockinfo> infos;
 	infos.resize(nblocks);
-	
+
 	/*
 	int stat_in_loop_matrix_hyperbola_count = 0;
 	int stat_in_loop_matrix_decode_count = 0;
@@ -2630,49 +2946,41 @@ bool BC7_RD(BlockSurface * to_blocks,
 			baseline_blocks = to_blocks;
 		}
 	
-		#ifdef _DEBUG
-		#define WINDOW_SIZE_END	80
-		#define WINDOW_SIZE_IND	64
-		#else
-		#define WINDOW_SIZE_END	(256+64+16+3)
-		#define WINDOW_SIZE_IND	(256+32+8+3)
-		// @@ TODO : tweak these sizes for space-speed
-		//	beware! they are very sensitive to over-training!
-		//	quality changes severely and non-mononitically with WINDOW_SIZE tweaks!
-		// (wood_003_m in particular is very sensitive in vcdiff, not so much in rmse)
+		typedef hash_table<bc7bits,int,hash_table_ops_mask31hash<bc7bits> > BlockToIndexHash;
+		BlockToIndexHash block_to_index;
+		block_to_index.reserve(nblocks);
 
-		//#define WINDOW_SIZE	512
-		// @@ make things faster and then do more!
-		// more = better , but slower
-		//	rdotestset1 1/20/2020
-		// WINDOW_SIZE 256 : total BPB saved at vcdiff +1.0 : [ 12.613 ]
-		// WINDOW_SIZE 512 : total BPB saved at vcdiff +1.0 : [ 13.293 ]
-		#endif
-		
-		bc7rd_windowentry past_block_endpoints[WINDOW_SIZE_END];
-		bc7rd_windowentry past_block_indices[WINDOW_SIZE_IND];
-		bc7rd_windowentry * mtfwindow_endpoints[WINDOW_SIZE_END];
-		bc7rd_windowentry * mtfwindow_indices[WINDOW_SIZE_IND];
+		vector<bc7rd_windowentry> past_block_endpoints;
+		vector<bc7rd_windowentry> past_block_indices;
+		vector<bc7rd_windowentry *> mtfwindow_endpoints;
+		vector<bc7rd_windowentry *> mtfwindow_indices;
+
+		past_block_endpoints.resize(config.mtf_window_endpoints_size);
+		past_block_indices.resize(config.mtf_window_indices_size);
+		mtfwindow_endpoints.resize(config.mtf_window_endpoints_size);
+		mtfwindow_indices.resize(config.mtf_window_indices_size);
+
 		int mtfwindow_endpoints_size = 0;
 		int mtfwindow_indices_size = 0;
-		
+
 		// mtf pointers instead of whole BC7BlockStates :
-		for LOOP(i,WINDOW_SIZE_END)
+		for LOOPVEC(i,past_block_endpoints)
 		{
 			mtfwindow_endpoints[i] = & past_block_endpoints[i];
 		}
-		for LOOP(i,WINDOW_SIZE_IND)
+		for LOOPVEC(i,past_block_indices)
 		{
 			mtfwindow_indices[i] = & past_block_indices[i];
 		}
 		
-		#if 1 // @@ ??
-		// seed block window with most common from baseline ?
-		// -> currently pretty meh
-		//  does smooth out a nasty wiggle on "decanter"
-		//	definitely slightly worse on "wood_worn" and "frymire" , nop on test6 & test7
-		mtfwindow_endpoints_size = seed_past_blocks(past_block_endpoints,WINDOW_SIZE_END,baseline_blocks,opt.flags);
-		#endif
+		if (config.mtf_window_seed_most_common) // @@ ??
+		{
+			// seed block window with most common from baseline ?
+			// -> currently pretty meh
+			//  does smooth out a nasty wiggle on "decanter"
+			//	definitely slightly worse on "wood_worn" and "frymire" , nop on test6 & test7
+			mtfwindow_endpoints_size = seed_past_blocks(past_block_endpoints,baseline_blocks,opt.flags);
+		}
 		
 		// get block usage in the baseline and favor using more common mode/part :
 		BC7_ModeHisto histo_mode;
@@ -2707,7 +3015,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 		//seed_rater.init(baseline_blocks);		
 		
 		{
-		SIMPLEPROFILE_SCOPE(bc7rd_core);
+		SIMPLEPROFILE_SCOPE(bc7rd_core); // primary loops
 	
 		for LOOP(bi,nblocks)
 		{
@@ -2737,124 +3045,113 @@ bool BC7_RD(BlockSurface * to_blocks,
 			
 			const rrColorBlock4x4 & colors = *((const rrColorBlock4x4 *)block);
 			infos[bi].colors = colors;
+			if (record_candidates_enabled) {
+				record_activity_block(lambda, to_blocks, bi, *pActivity);
+				record_input_block_as_candidate(lambda, 0, to_blocks, infos, bi);
+			}
 			
-			
-			#if 1
-			// doing this on frymire helps a *lot*
-			//	the normal bc7rd action on frymire does bad things
-			//	need to understand why
-			// @@ in theory we should let single color blocks drop through and do RD on them
-			//	for example they can sometimes hit their single color exactly
-			//	 by using some existing set of endpoints with flat indices
-			//  it's not very important if that color value occurs many times
-			//	  since you'll match the whole block for all but the first occurance
-			// @@ possible opportunisitc way to do it :
-			//	 look back in the MTF windows of endpoints, for single-subset blocks only
-			//	 try a flat-index encoding, and see if it can hit the desired color exactly
-			//   if you find one, then use that for this block (instead of the standard single color encoding)
-			//	 then remember it for the future so that if you ever see that same single color again,
-			//	  you use the same encoding
-			if ( prep.single_color )
+			if ( config.core_fix_single_color_block && prep.single_color )
 			{
 				// RD optimized single color?
 				// or just copy from baseline
 				//bc7_encode_single_color_block(output_bc7, block);
 				memcpy(output_bc7,baseline_block_ptr,16); // BC7 Block
-				
+
 				// just stuff zeros, then final matrix won't try to change this
 				infos[bi].D = 0;
 				infos[bi].J = 0;
 				infos[bi].baseline_D = 0;
-				
+				if (record_candidates_enabled)
+					record_candidate_block(lambda, 1, to_blocks, bi, output_bc7, 0., 0.0, opt.flags); // we don't have a rate we can assign this
+
 				continue;
 			}
-			#endif
-			
+
 			// else, do it !
 			
-			#if 1 // recomp block with J bias - yes helps a lot
-			
-			// re-compress baseline with expected_size_errbias
-			//	now only done for a few modes that have lower expected size bias than
-			//	 the mode previously chosen by baseline
 			U8 new_baseline_block[16]; // out of scope where I can point at it
-			
-			{
-			SIMPLEPROFILE_SCOPE(bc7rd_compress);
-			
-			bc7bits old_bits = bc7bits_load(baseline_block_ptr);
-			int old_mode = bc7bits_get_mode(old_bits);
-			
-			// find old_mode in sorted list :
-			int old_mode_sort_pos = 0;
-			while( mode_and_count_sorted[old_mode_sort_pos].dw != (U32)old_mode )
-				old_mode_sort_pos++;
-			
-			if ( old_mode_sort_pos > 0 )
-			{
-				// cur_errbias turns off modes we don't need to consider
-				BC7_Mode_ErrBias cur_errbias;
-				cur_errbias = expected_size_errbias;
-				
-				// turn off modes that are less common than old_mode :
-				//	 and turn off old mode too		
-					
-				// truncating to 3 is nearly a NOP :
-				old_mode_sort_pos = RR_MIN(old_mode_sort_pos,3); // leave a max of 3 modes on
-				//old_mode_sort_pos = RR_MIN(old_mode_sort_pos,2); // leave a max of 2 modes on
-				// hell even truncating to 1 is ok (it's not a NOP, better on some, worse on others)
-				//old_mode_sort_pos = 1; // leave a max of 1 modes on
-				for(int sort_pos=old_mode_sort_pos;sort_pos<8;sort_pos++)
-				{
-					int m = mode_and_count_sorted[sort_pos].dw;
-					cur_errbias.ssd_err_bias[m] = RR_U32_MAX;
-				}
-				
-				#if 1
-				// ALSO turn off modes that are less common than old_mode
-				//	(this is very similar to just truncating the above to 1 or 2)
-				// @@ not entirely sure about this, but seems to be okay
-				for(int sort_pos=1;sort_pos<old_mode_sort_pos;sort_pos++)
-				{
-					int m = mode_and_count_sorted[sort_pos].dw;
-					if ( histo_mode.count[m] <= histo_mode.count[old_mode] )
-						cur_errbias.ssd_err_bias[m] = RR_U32_MAX;
-				}
-				#endif
-			
-				// use the "Prep" we already made; does save a tiny bit of time
-				//if ( BC7_CompressBlock(new_baseline_block,block,level,options,&cur_errbias) )
-				if ( BC7_CompressBlock_Sub(new_baseline_block,block,&opt,&prep,&cur_errbias) )
-				{				
-					// do a J test for the recomp baseline vs original baseline
 
-					bc7bits new_bits = bc7bits_load(new_baseline_block);
-					int new_mode = bc7bits_get_mode(new_bits);
-					
-					RR_ASSERT( new_mode != old_mode );
-					RR_ASSERT( expected_size_errbias.ssd_err_bias[new_mode] <= expected_size_errbias.ssd_err_bias[old_mode] );
-					
-					// typically you should see that new_mode has lower ssd_err_bias and higher D
-					//	 (since it wasn't chosen by original baseline encode which only cares about D)
-										
-					U32 old_D = bc7rd_SSD(old_bits,block,opt.flags);
-					U32 new_D = bc7rd_SSD(new_bits,block,opt.flags);
-						
-					// J&D here is in units of SSD (not 2*SSD like VQD)
-					U32 old_J = old_D + expected_size_errbias.ssd_err_bias[old_mode];
-					U32 new_J = new_D + expected_size_errbias.ssd_err_bias[new_mode];
-						
-					if ( new_J < old_J )
-					{
-						baseline_block_ptr = new_baseline_block;
-							
-						// then everything recomputed below
-					}
-				}
-			}			
+			if (config.core_recompress_block_with_J_bias)
+			{
+				// recomp block with J bias - yes helps a lot
 			
-			} // profile scope
-			#endif
+				// re-compress baseline with expected_size_errbias
+				//	now only done for a few modes that have lower expected size bias than
+				//	 the mode previously chosen by baseline
+				
+				SIMPLEPROFILE_SCOPE(bc7rd_recompress);
+				
+				bc7bits old_bits = bc7bits_load(baseline_block_ptr);
+				int old_mode = bc7bits_get_mode(old_bits);
+				
+				// find old_mode in sorted list :
+				int old_mode_sort_pos = 0;
+				while( mode_and_count_sorted[old_mode_sort_pos].dw != (U32)old_mode )
+					old_mode_sort_pos++;
+				
+				if ( old_mode_sort_pos > 0 )
+				{
+					// cur_errbias turns off modes we don't need to consider
+					BC7_Mode_ErrBias cur_errbias;
+					cur_errbias = expected_size_errbias;
+					
+					// turn off modes that are less common than old_mode :
+					//	 and turn off old mode too		
+						
+					// truncating to 3 is nearly a NOP :
+					old_mode_sort_pos = RR_MIN(old_mode_sort_pos,3); // leave a max of 3 modes on
+					//old_mode_sort_pos = RR_MIN(old_mode_sort_pos,2); // leave a max of 2 modes on
+					// hell even truncating to 1 is ok (it's not a NOP, better on some, worse on others)
+					//old_mode_sort_pos = 1; // leave a max of 1 modes on
+					for(int sort_pos=old_mode_sort_pos;sort_pos<8;sort_pos++)
+					{
+						int m = mode_and_count_sorted[sort_pos].dw;
+						cur_errbias.ssd_err_bias[m] = RR_U32_MAX;
+					}
+
+					if (config.core_disable_less_common_modes)
+					{
+						// ALSO turn off modes that are less common than old_mode
+						//	(this is very similar to just truncating the above to 1 or 2)
+						// @@ not entirely sure about this, but seems to be okay
+						for(int sort_pos=1;sort_pos<old_mode_sort_pos;sort_pos++)
+						{
+							int m = mode_and_count_sorted[sort_pos].dw;
+							if ( histo_mode.count[m] <= histo_mode.count[old_mode] )
+								cur_errbias.ssd_err_bias[m] = RR_U32_MAX;
+						}
+					}
+
+					// use the "Prep" we already made; does save a tiny bit of time
+					//if ( BC7_CompressBlock(new_baseline_block,block,level,options,&cur_errbias) )
+					if ( BC7_CompressBlock_Sub(new_baseline_block,block,&opt,&prep,&cur_errbias) )
+					{				
+						// do a J test for the recomp baseline vs original baseline
+						bc7bits new_bits = bc7bits_load(new_baseline_block);
+						int new_mode = bc7bits_get_mode(new_bits);
+						
+						RR_ASSERT( new_mode != old_mode );
+						RR_ASSERT( expected_size_errbias.ssd_err_bias[new_mode] <= expected_size_errbias.ssd_err_bias[old_mode] );
+						
+						// typically you should see that new_mode has lower ssd_err_bias and higher D
+						//	 (since it wasn't chosen by original baseline encode which only cares about D)
+											
+						U32 old_D = bc7rd_SSD(old_bits,block,opt.flags);
+						U32 new_D = bc7rd_SSD(new_bits,block,opt.flags);
+							
+						// J&D here is in units of SSD (not 2*SSD like VQD)
+						U32 old_J = old_D + expected_size_errbias.ssd_err_bias[old_mode];
+						U32 new_J = new_D + expected_size_errbias.ssd_err_bias[new_mode];
+							
+						if ( new_J < old_J )
+						{
+							baseline_block_ptr = new_baseline_block;
+								
+							// then everything recomputed below
+						}
+					}
+				}							
+			}
 			
 			BC7BlockState baseline_st;
 			bc7enc_state_from_bits(&baseline_st,baseline_block_ptr,opt.flags);
@@ -2875,6 +3172,8 @@ bool BC7_RD(BlockSurface * to_blocks,
 			//U32 baseline_err = bc7enc_calc_error(&baseline_st,block,opt.flags);
 			F32 baseline_D = bc7rd_D(&baseline_st,block,opt.flags,*pActivity);
 			F32 baseline_R = bc7rd_R_uncompressed;
+			if (record_candidates_enabled)
+				record_candidate_block(lambda, 2, to_blocks, bi, baseline_st, baseline_D, baseline_R, opt.flags);
 	
 			/*
 			// investigating where A error comes from on opaque images
@@ -2897,7 +3196,6 @@ bool BC7_RD(BlockSurface * to_blocks,
 			// @@!!
 			// rate baseline block from seed_rater
 			//	rather than just assume it's 128 raw bits
-			bc7bits baseline_block_bits = bc7bits_load(baseline_block_ptr);
 			baseline_R = seed_rater.get_block_rate(baseline_block_bits);
 			#endif
 						
@@ -2912,6 +3210,40 @@ bool BC7_RD(BlockSurface * to_blocks,
 			int best_mtfwindow_endpoints_i = -1;
 			int best_mtfwindow_indices_i = -1;
 		
+			if ( 1 )
+			{
+				// if we've seen the exact same baseline block before in this chunk, make sure we produce the same encoding
+				bc7bits baseline_block_bits = bc7bits_load(baseline_block_ptr);
+				bool seen_baseline_before = false;
+				const BlockToIndexHash::entry_type * entry = block_to_index.find_or_insert(BlockToIndexHash::ops().hash_key(baseline_block_bits), baseline_block_bits, bi, &seen_baseline_before);
+				if ( seen_baseline_before )
+				{
+					// use same encoding as we did last time so we do not break up duplicates
+					int prev_bi = entry->data();
+					const U8 * prev_block_ptr = BlockSurface_SeekC(to_blocks,prev_bi);
+
+					memcpy(output_bc7, prev_block_ptr, 16);
+
+					F32 repeat_R = bc7rd_matched_R(128,bi - prev_bi);
+
+					// need to recompute block D even though we use the same block
+					// as prev_bi because activity can be different
+					RAD_ALIGN(U8, decoded[64], BC7_BLOCK_ALIGN);
+					bc7_decode_block4x4a(decoded,prev_block_ptr,opt.flags);
+
+					infos[bi].D = bc7rd_D(decoded,block,opt.flags,*pActivity);
+					infos[bi].J = bc7rd_J(infos[bi].D,repeat_R,lambda);
+
+					// NOT SURE: insert into window?
+					// easier said than done, would need to find where it actually is to get the right inds
+					/*bc7rd_windowentry new_entry;
+					bc7enc_state_from_bits(&new_entry.st,prev_block_ptr,opt.flags);
+					new_entry.encoded = bc7bits_load(prev_block_ptr);*/
+
+					continue;
+				}
+			}
+
 			// take past blocks and try substituting endpoints or indices
 			
 			if ( mtfwindow_endpoints_size > 0 )
@@ -2926,7 +3258,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 			// mtfwindi_last will get copy of best and do slow refine
 			//  I'm doing the copy-to-last just to avoid code dupe
 			int mtfwindi_iters = mtfwindow_endpoints_size+1;
-			mtfwindi_iters = RR_MIN(mtfwindi_iters,WINDOW_SIZE_END);
+			mtfwindi_iters = RR_MIN(mtfwindi_iters, config.mtf_window_endpoints_size);
 			int mtfwindi_last = mtfwindi_iters-1;
 			RR_DURING_ASSERT( mtfwindow_endpoints[mtfwindi_last]->st.err = BC7_ERROR_MAX );
 			// disable last iter :
@@ -3030,6 +3362,8 @@ bool BC7_RD(BlockSurface * to_blocks,
 					best_st = st;
 					best_mtfwindow_endpoints_i = mtfwindowi;
 					best_mtfwindow_indices_i = -1;
+					if (record_candidates_enabled)
+						record_candidate_block(lambda, 3, to_blocks, bi, st, cur_D, cur_R, opt.flags);
 				}
 				
 				if ( cur_J < best_J_here )
@@ -3044,8 +3378,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 			
 			} // profile scope
 			
-			#if 1
-			if ( mtfwindow_indices_size > 0 )
+			if ( config.core_endpoints_from_indices && mtfwindow_indices_size > 0 )
 			{
 			SIMPLEPROFILE_SCOPE(bc7rd_indices);
 			
@@ -3064,7 +3397,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 			// mtfwindi_last will get copy of best and do slow refine
 			//  I'm doing the copy-to-last just to avoid code dupe
 			int mtfwindi_iters = mtfwindow_indices_size+1;
-			mtfwindi_iters = RR_MIN(mtfwindi_iters,WINDOW_SIZE_IND);
+			mtfwindi_iters = RR_MIN(mtfwindi_iters, config.mtf_window_indices_size);
 			int mtfwindi_last = mtfwindi_iters-1;
 			RR_DURING_ASSERT( mtfwindow_indices[mtfwindi_last]->st.err = BC7_ERROR_MAX );
 			// disable last iter :
@@ -3131,7 +3464,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 				F32 cur_D = bc7rd_D(&st,block,opt.flags,*pActivity);
 				F32 cur_R = bc7rd_matched_R(cur_matched_bits,mtfwindowi+1);
 				F32 cur_J = bc7rd_J(cur_D,cur_R,lambda);
-							
+
 				if ( cur_J < best_J )
 				{
 					best_J = cur_J;
@@ -3139,6 +3472,8 @@ bool BC7_RD(BlockSurface * to_blocks,
 					best_st = st;
 					best_mtfwindow_endpoints_i = -1;
 					best_mtfwindow_indices_i = mtfwindowi;
+					if (record_candidates_enabled)
+						record_candidate_block(lambda, 4, to_blocks, bi, st, cur_D, cur_R, opt.flags);
 				}
 				
 				if ( cur_J < best_J_here )
@@ -3152,9 +3487,8 @@ bool BC7_RD(BlockSurface * to_blocks,
 			}
 			
 			} // profile scope
-			#endif
 
-			#if 1
+			if (config.do_ilm)
 			{
 			SIMPLEPROFILE_SCOPE(bc7rd_matrix);				
 			
@@ -3171,16 +3505,11 @@ bool BC7_RD(BlockSurface * to_blocks,
 			//	as we'll consider {end A} + {ind A} from block A
 			//	 those will of course have the same mode & part so be viable candidates
 			
-			#define HYPERBOLA_MAX_INDEX_PRODUCT		200
-			//#define HYPERBOLA_MAX_INDEX_PRODUCT		256
-			//#define HYPERBOLA_MAX_INDEX_PRODUCT	512 // incremental gains and much slower
-						
-			#define MATRIX_DIM	RR_MIN3(WINDOW_SIZE_END,WINDOW_SIZE_IND,HYPERBOLA_MAX_INDEX_PRODUCT)
-			RR_COMPILER_ASSERT( MATRIX_DIM <= WINDOW_SIZE_END );
-			RR_COMPILER_ASSERT( MATRIX_DIM <= WINDOW_SIZE_IND );
-			
-			int matrix_dim_ind = RR_MIN(MATRIX_DIM,mtfwindow_indices_size);
-			int matrix_dim_end = RR_MIN(MATRIX_DIM,mtfwindow_endpoints_size);
+			int matrix_dim = RR_MIN3(config.mtf_window_endpoints_size,
+									 config.mtf_window_indices_size,
+									 config.ilm_hyperbola_max_index_product);
+			int matrix_dim_ind = RR_MIN(matrix_dim,mtfwindow_indices_size);
+			int matrix_dim_end = RR_MIN(matrix_dim,mtfwindow_endpoints_size);
 			
 			//const rrColorBlock4x4 & colors = *((const rrColorBlock4x4 *)block);
 			// find SAD of current best, to set up must_beat_sad :
@@ -3207,12 +3536,11 @@ bool BC7_RD(BlockSurface * to_blocks,
 
 				for LOOP(endpi,matrix_dim_end)
 				{
-					// hyperbola limitted search :
+					// hyperbola limited search :
 					// we want to mainly search where either indi or endpi are very low
 					//	 like 100x4 and 4x100 , not the whole 100x100 square
-					//if ( indi*endpi > MATRIX_DIM ) break;
 					int index_product = (indi+1)*(endpi+1);
-					if ( index_product > HYPERBOLA_MAX_INDEX_PRODUCT ) break;
+					if ( index_product > config.ilm_hyperbola_max_index_product ) break;
 
 					//stat_in_loop_matrix_hyperbola_count++;
 					
@@ -3278,7 +3606,7 @@ bool BC7_RD(BlockSurface * to_blocks,
 								//	-> maybe just a tweaked constant to add on here
 								F32 cur_R = bc7rd_matched_R_lz(endpi+1) + bc7rd_matched_R_lz(indi+1);
 								F32 cur_J = bc7rd_J(cur_D,cur_R,lambda);
-											
+
 								if ( cur_J < best_J )
 								{
 									// get state : 
@@ -3290,7 +3618,9 @@ bool BC7_RD(BlockSurface * to_blocks,
 									best_D = cur_D;
 									best_mtfwindow_endpoints_i = endpi;
 									best_mtfwindow_indices_i = indi;
-								}	
+									if (record_candidates_enabled)
+										record_candidate_block(lambda, 5, to_blocks, bi, *((const rrColorBlock4x4*)decoded), bc7bits_get_mode(pair1), cur_D, cur_R);
+								}
 							}
 						}
 						
@@ -3308,7 +3638,6 @@ bool BC7_RD(BlockSurface * to_blocks,
 			}
 			
 			} // profile scope
-			#endif
 
 			infos[bi].D = best_D;
 			infos[bi].J = best_J;
@@ -3321,11 +3650,11 @@ bool BC7_RD(BlockSurface * to_blocks,
 			bc7rd_windowentry new_entry;
 			new_entry.st = best_st;
 			new_entry.encoded = bc7bits_load(output_bc7);
-			
+
 			// add to window :
-			bc7_update_mtf_window(&new_entry,best_mtfwindow_endpoints_i,mtfwindow_endpoints,mtfwindow_endpoints_size,WINDOW_SIZE_END);
-			bc7_update_mtf_window(&new_entry,best_mtfwindow_indices_i,mtfwindow_indices,mtfwindow_indices_size,WINDOW_SIZE_IND);
-			
+			bc7_update_mtf_window(&new_entry,best_mtfwindow_endpoints_i,mtfwindow_endpoints,mtfwindow_endpoints_size);
+			bc7_update_mtf_window(&new_entry,best_mtfwindow_indices_i,mtfwindow_indices,mtfwindow_indices_size);
+
 			/*
 			// log BEI block usage image :
 			//  (on large images turn off threading)
@@ -3338,139 +3667,159 @@ bool BC7_RD(BlockSurface * to_blocks,
 		}
 		
 		} // profile scope
-		
-		#if 1 // BUM
-		#if 1
-		// @@!!
-		// -> this is what causes the rmse jump on quaking lambda=1
-		bc7rd_bottom_up_merge_indices(to_blocks,activity_blocks,infos,lambda,opt.flags);
-		
-		// rates were not updated by merge_indices
-		//	fix that now by re-rating using "static" model (global VQ probability estimate)
-		
-		// @@ bc7rd_static_rater does a lot of the same stuff I do (in final matrix)
-		//	the vc_indices construction is exactly the same, code dupe & redundant work
-		bc7rd_recompute_rates_static_model(to_blocks,infos,lambda);
-		
-		#else
-		{
-		// @@!!
-		// attempt to fix bc7rd_bottom_up_merge_indices making a bad step
-		//	on quaking alpha lambda=1
-		
-		// do bottom_up_merge to the side, save the blocks before
-		// then do a J eval of the two options and take what's best
-		
-		// the better J too often goes with the non-merged
-		//	but that seems to really hurt real world performance
-		//	you have to apply a very large penalty to prefer the merged
-		
-		// this can fix the quaking alpha lambda=1 step
-		
-		BlockSurface merged_blocks = { };
-		BlockSurface_AllocCopy(&merged_blocks,to_blocks);
-		vector<bc7rd_blockinfo> merged_infos; // could skip this and have merge_indices not update infos
-		merged_infos = infos;
-		
-		bc7rd_bottom_up_merge_indices(&merged_blocks,activity_blocks,merged_infos,lambda,opt.flags);
 
-		bc7rd_static_rater rater;
-		// using merged_blocks to build the rater strongly favors choosing them in the output
-		//	but that's not strong enough, I need to add huge extra fudges to the rate!
-		rater.init(&merged_blocks);
-		
-		//F32 one_over_lambda = 1.f / lambda;
-		int nb = to_blocks->count;
-		
-		for LOOP(bi,nb)
-		{
-			U8 * to_blocks_ptr = BlockSurface_Seek(to_blocks,bi);
-			bc7bits to_blocks_bits = bc7bits_load(to_blocks_ptr);
-			
-			
-			// re-rate block :
-			F32 to_blocks_R = rater.get_block_rate(to_blocks_bits);
-			F32 to_blocks_D = infos[bi].D;
-			F32 to_blocks_J = bc7rd_J(to_blocks_D,to_blocks_R,lambda);
+		if (record_candidates_enabled)
+			for LOOP(bi, nblocks)
+				record_candidate_block_from_infos(lambda, 6, to_blocks, infos, bi, opt.flags); // validate 1
 
-			// update J for new rate :
-			infos[bi].J = to_blocks_J;
-			
-			const U8 * merged_blocks_ptr = BlockSurface_SeekC(&merged_blocks,bi);
-			bc7bits merged_blocks_bits = bc7bits_load(merged_blocks_ptr);
-			
-			if ( merged_blocks_bits != to_blocks_bits )
-			{			
-				// re-rate block :
-				F32 merged_blocks_R = rater.get_block_rate(merged_blocks_bits);
-				F32 merged_blocks_D = merged_infos[bi].D;
-				F32 merged_blocks_J = bc7rd_J(merged_blocks_D,merged_blocks_R,lambda);
-				
-				//if ( merged_blocks_J < to_blocks_J ) // honest J compare : BAD!
-				//if ( 1 ) // always take merged : GOOD! WTF
-				// strong favor for taking merged blocks :
-				//	if you don't strongly favor merged, results are way worse
-				if ( merged_blocks_J < infos[bi].J + lambda * 512.f )
-				{
-					infos[bi].J = merged_blocks_J;
-					infos[bi].D = merged_blocks_D;
-					bc7bits_store(to_blocks_ptr,merged_blocks_bits);
-					to_blocks_bits = merged_blocks_bits;
-				}		
-			}	
-			
-			// @@!! do original baseline too? (before recomp)
-			//	at very low lambda this acts to make the step away from baseline smaller
+		if (config.do_bottom_up_merge)
+		{
 			#if 1
-			const U8 * baseline_block_ptr = BlockSurface_SeekC(baseline_blocks,bi);
-			bc7bits baseline_block_bits = bc7bits_load(baseline_block_ptr);
+			// @@!!
+			// -> this is what causes the rmse jump on quaking lambda=1
+			bc7rd_bottom_up_merge_indices(to_blocks,activity_blocks,infos,lambda,opt.flags);
 			
-			const ActivityBlock4x4 * pActivity = BlockSurface_SeekC_ActivityBlock4x4(activity_blocks,bi);
-				
-			if ( baseline_block_bits != to_blocks_bits )
-			{			
-				// re-rate block :
-				F32 baseline_blocks_R = rater.get_block_rate(baseline_block_bits);
-				F32 baseline_blocks_D = bc7rd_D(baseline_block_bits,infos[bi].colors,opt.flags,*pActivity);
-				// note this is *not* "baseline_D" in infos, that's after the recomp
-				F32 baseline_blocks_J = bc7rd_J(baseline_blocks_D,baseline_blocks_R,lambda);
-				
-				// strong favor *against* taking baseline blocks :
-				//at 128 (or less) quaking alpah lambda=1 keeps rmse at 0 exactly
-				//if ( baseline_blocks_J < infos[bi].J - lambda * 128.f )
-				//at 256 quaking alpah lambda=1 keeps rmse = small
-				if ( baseline_blocks_J < infos[bi].J - lambda * 256.f )
-				{
-					infos[bi].J = baseline_blocks_J;
-					infos[bi].D = baseline_blocks_D;
-					bc7bits_store(to_blocks_ptr,baseline_block_bits);
-				}		
-			}	
-			#endif			
-		}			
-		
-		BlockSurface_Free(&merged_blocks);
-		}
-		#endif
-		#endif
-		
-		#if 1
-		bc7rd_final_matrix(to_blocks,activity_blocks,infos,lambda,opt.flags);
-		#endif
-		
-		#if 1
-		{
-		SIMPLEPROFILE_SCOPE(final_optimize);
-	
-		// @@ does order matter?
-		//endpoints:
-		bc7rd_final_optimize(to_blocks,activity_blocks,infos,opt.flags,false);
-		//indices :
-		bc7rd_final_optimize(to_blocks,activity_blocks,infos,opt.flags,true);
+			// rates were not updated by merge_indices
+			//	fix that now by re-rating using "static" model (global VQ probability estimate)
+			
+			// @@ bc7rd_static_rater does a lot of the same stuff I do (in final matrix)
+			//	the vc_indices construction is exactly the same, code dupe & redundant work
+			bc7rd_recompute_rates_static_model(to_blocks,infos,lambda);
 
-		// @@ then endpoints again? (that's what BC1RD does)
+			if (record_candidates_enabled)
+				for LOOP(bi, nblocks)
+					record_candidate_block_from_infos(lambda, 9, to_blocks, infos, bi, opt.flags);
+
+			#else
+			{
+			// @@!!
+			// attempt to fix bc7rd_bottom_up_merge_indices making a bad step
+			//	on quaking alpha lambda=1
+			
+			// do bottom_up_merge to the side, save the blocks before
+			// then do a J eval of the two options and take what's best
+			
+			// the better J too often goes with the non-merged
+			//	but that seems to really hurt real world performance
+			//	you have to apply a very large penalty to prefer the merged
+			
+			// this can fix the quaking alpha lambda=1 step
+			
+			BlockSurface merged_blocks = { };
+			BlockSurface_AllocCopy(&merged_blocks,to_blocks);
+			vector<bc7rd_blockinfo> merged_infos; // could skip this and have merge_indices not update infos
+			merged_infos = infos;
+			
+			bc7rd_bottom_up_merge_indices(&merged_blocks,activity_blocks,merged_infos,lambda,opt.flags);
+
+			bc7rd_static_rater rater;
+			// using merged_blocks to build the rater strongly favors choosing them in the output
+			//	but that's not strong enough, I need to add huge extra fudges to the rate!
+			rater.init(&merged_blocks);
+			
+			//F32 one_over_lambda = 1.f / lambda;
+			int nb = to_blocks->count;
+			
+			for LOOP(bi,nb)
+			{
+				U8 * to_blocks_ptr = BlockSurface_Seek(to_blocks,bi);
+				bc7bits to_blocks_bits = bc7bits_load(to_blocks_ptr);
+				
+				
+				// re-rate block :
+				F32 to_blocks_R = rater.get_block_rate(to_blocks_bits);
+				F32 to_blocks_D = infos[bi].D;
+				F32 to_blocks_J = bc7rd_J(to_blocks_D,to_blocks_R,lambda);
+
+				// update J for new rate :
+				infos[bi].J = to_blocks_J;
+				
+				const U8 * merged_blocks_ptr = BlockSurface_SeekC(&merged_blocks,bi);
+				bc7bits merged_blocks_bits = bc7bits_load(merged_blocks_ptr);
+				
+				if ( merged_blocks_bits != to_blocks_bits )
+				{			
+					// re-rate block :
+					F32 merged_blocks_R = rater.get_block_rate(merged_blocks_bits);
+					F32 merged_blocks_D = merged_infos[bi].D;
+					F32 merged_blocks_J = bc7rd_J(merged_blocks_D,merged_blocks_R,lambda);
+					
+					//if ( merged_blocks_J < to_blocks_J ) // honest J compare : BAD!
+					//if ( 1 ) // always take merged : GOOD! WTF
+					// strong favor for taking merged blocks :
+					//	if you don't strongly favor merged, results are way worse
+					if ( merged_blocks_J < infos[bi].J + lambda * 512.f )
+					{
+						infos[bi].J = merged_blocks_J;
+						infos[bi].D = merged_blocks_D;
+						bc7bits_store(to_blocks_ptr,merged_blocks_bits);
+						to_blocks_bits = merged_blocks_bits;
+					}		
+				}	
+				
+				// @@!! do original baseline too? (before recomp)
+				//	at very low lambda this acts to make the step away from baseline smaller
+				#if 1
+				const U8 * baseline_block_ptr = BlockSurface_SeekC(baseline_blocks,bi);
+				bc7bits baseline_block_bits = bc7bits_load(baseline_block_ptr);
+				
+				const ActivityBlock4x4 * pActivity = BlockSurface_SeekC_ActivityBlock4x4(activity_blocks,bi);
+					
+				if ( baseline_block_bits != to_blocks_bits )
+				{			
+					// re-rate block :
+					F32 baseline_blocks_R = rater.get_block_rate(baseline_block_bits);
+					F32 baseline_blocks_D = bc7rd_D(baseline_block_bits,infos[bi].colors,opt.flags,*pActivity);
+					// note this is *not* "baseline_D" in infos, that's after the recomp
+					F32 baseline_blocks_J = bc7rd_J(baseline_blocks_D,baseline_blocks_R,lambda);
+					
+					// strong favor *against* taking baseline blocks :
+					//at 128 (or less) quaking alpah lambda=1 keeps rmse at 0 exactly
+					//if ( baseline_blocks_J < infos[bi].J - lambda * 128.f )
+					//at 256 quaking alpah lambda=1 keeps rmse = small
+					if ( baseline_blocks_J < infos[bi].J - lambda * 256.f )
+					{
+						infos[bi].J = baseline_blocks_J;
+						infos[bi].D = baseline_blocks_D;
+						bc7bits_store(to_blocks_ptr,baseline_block_bits);
+					}		
+				}	
+				#endif			
+			}			
+			
+			BlockSurface_Free(&merged_blocks);
+			}
+			#endif
+
+		} // DO_BOTTOM_UP_MERGE
+
+		if (config.do_final_matrix)
+		{
+			bc7rd_final_matrix(to_blocks,activity_blocks,infos,lambda,opt.flags,config);
+			if (record_candidates_enabled)
+				for LOOP(bi, nblocks)
+					record_candidate_block_from_infos(lambda, 11, to_blocks, infos, bi, opt.flags);
 		}
-		#endif
+
+
+		if (config.do_final_optimize)
+		{
+			SIMPLEPROFILE_SCOPE(final_optimize);
+	
+			// @@ does order matter?
+			//endpoints:
+			bc7rd_final_optimize(to_blocks,activity_blocks,infos,opt.flags,lambda,false);
+
+			//indices :
+			bc7rd_final_optimize(to_blocks,activity_blocks,infos,opt.flags,lambda,true);
+
+			// @@ then endpoints again? (that's what BC1RD does)
+		}
+
+		if (record_candidates_enabled)
+			for LOOP(bi, nblocks)
+				// validate 2
+				record_candidate_block_compute_D_unknown_R(lambda, 23, to_blocks, infos, bi, opt.flags,*BlockSurface_SeekC_ActivityBlock4x4(activity_blocks,bi));
 	}
 
 	/*
@@ -3495,11 +3844,11 @@ bool BC7_RD(BlockSurface * to_blocks,
 		histo.count[4]*100.0/to_blocks->count,
 		histo.count[5]*100.0/to_blocks->count,
 		histo.count[6]*100.0/to_blocks->count,
-		histo.count[7]*100.0/to_blocks->count);		
+		histo.count[7]*100.0/to_blocks->count);
 	}
 	#endif
 
 	return true;
 }
-	
+
 RR_NAMESPACE_END

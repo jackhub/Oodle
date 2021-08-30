@@ -38,8 +38,8 @@
 
 #include "newlz_speedfit.h"
 #include "newlz_shared.h"
-
 #include "newlz_offsets.h"
+#include "newlz_decoder.h"
 #include "speedfitter.h"
 #include "matchfinder.h"
 
@@ -65,25 +65,20 @@ extern double g_comptime_param;
 #define NEWLZ_LAMBDA_KRAKEN	0.01f
 #endif
 
-#if 0 //def _DEBUG
-#define DO_CHECK	1
-#else
-#define DO_CHECK	0
+// Set up parse flags; the Jaguars are slightly slower with the SSE4 parse, so even though they're
+// known to always have SSE4, make them use the original path.
+#ifdef DO_SSE4_ALWAYS
+#define DO_SSE4_PARSE_ALWAYS
 #endif
 
-#if DO_CHECK
-#define CHECK(x)	x
-#else
-#define CHECK(x)
+#ifdef DO_SSE4_TEST
+#define DO_SSE4_PARSE_TEST
 #endif
 
-
-// assert on stuff that's too slow to leave on all the time :
-#define NEWLZ_ASSERT_HEAVY(exp)
-//#define NEWLZ_ASSERT_HEAVY	RR_ASSERT
-
-
-
+#ifdef __RADJAGUAR__
+#undef DO_SSE4_PARSE_ALWAYS
+#undef DO_SSE4_PARSE_TEST
+#endif
 
 /****
 
@@ -221,8 +216,6 @@ NEWLZ_MML is 4 for greedy parses, sometimes 3 for optimal
 
 */
 
-#define NEWLZ_LOMML			2	// <- locked at 2
-
 #define NEWLZ_MML_NORMAL	4	// <- this is just an encoder parameter, doesn't change code stream
 
 
@@ -242,20 +235,6 @@ normal matches of len 2 & 3
 
 **/
 
-#define NEWLZ_NUM_LAST_OFFSETS		3
-#define NEWLZ_PACKET_OFFSETS_COUNT	(NEWLZ_NUM_LAST_OFFSETS+1)
-
-#define NEWLZ_PACKET_LRL_COUNT		4
-#define NEWLZ_PACKET_ML_COUNT		16
-
-#define NEWLZ_PACKET_LRL_MAX	(NEWLZ_PACKET_LRL_COUNT-1)
-#define NEWLZ_PACKET_ML_MAX		(NEWLZ_PACKET_ML_COUNT-1)
-
-#define NEWLZ_PACKET_COUNT		(NEWLZ_PACKET_OFFSETS_COUNT*NEWLZ_PACKET_LRL_COUNT*NEWLZ_PACKET_ML_COUNT)
-
-RR_COMPILER_ASSERT(	NEWLZ_PACKET_COUNT <= 256 ); // packet fits in U8
-
-
 // can not define NEWLZ_LRL_FOR_LONGER_MML to turn it off :
 // @@@@ could use more thorough tweak ; 64 looks okay
 //	decode_parse_inner checks for LRL >= 24 then unrolls big steps
@@ -266,7 +245,6 @@ RR_COMPILER_ASSERT(	NEWLZ_PACKET_COUNT <= 256 ); // packet fits in U8
 
 //#define NEWLZ_OFF4M_MML		8
 //#define NEWLZ_OFF4M_MML		10
-
 
 static RADINLINE bool newLZ_IsAllowedNormalMatch_Optimal(int ml,int off,const OodleLZ_CompressOptions *pOptions)
 {
@@ -682,60 +660,10 @@ struct newLZ_LOs
 	S32 LastOffset() const { return lasts[0]; }
 };
 
-#if defined(__RADZEN2__) // LO MTF with SSE4 ops
-
-// This is profitable on all the Zens, not so on other
-// HW I've tested, for reasons as yet unknown (didn't have the
-// time to figure out exactly why)
-//
-// -> for now, use it when we know we're on a Zen (2) but not otherwise
-
-static RAD_ALIGN(S32, s_lo_shuffles[4][4], 16) =
-{
-#define I(i) (i)*0x04040404+0x03020100
-	{ I(0),I(1),I(2),I(3) },
-	{ I(1),I(0),I(2),I(3) },
-	{ I(2),I(0),I(1),I(3) },
-	{ I(3),I(0),I(1),I(2) },
-#undef I
-};
-
-// This does the decode side only
-struct newLZ_LOs_SSE4
-{
-	RR_COMPILER_ASSERT( NEWLZ_NUM_LAST_OFFSETS == 3 );
-	__m128i offsets;
-
-	RADFORCEINLINE void Reset_Neg()
-	{
-		offsets = _mm_set1_epi32(- NEWLZ_MIN_OFFSET);
-	}
-
-	RADFORCEINLINE S32 MTF(SINTr index)
-	{
-		// index can be 1 above last set for normal offset
-		RR_ASSERT( index <= NEWLZ_NUM_LAST_OFFSETS );
-
-		offsets = _mm_shuffle_epi8(offsets, _mm_load_si128((const __m128i *) s_lo_shuffles[index]));
-		return _mm_cvtsi128_si32(offsets);
-	}
-	
-	S32 LastOffset() const { return _mm_cvtsi128_si32(offsets); }
-};
-
-#define newLZ_dec_LOs							newLZ_LOs_SSE4
-#define newLZ_dec_LOs_Reset_Neg(lasts)		lasts.Reset_Neg()
-#define newLZ_dec_LOs_MTF(lasts,index)		lasts.MTF(index)
-#define newLZ_dec_LOs_Add(lastoffsets,above)	lastoffsets.offsets = _mm_insert_epi32(lastoffsets.offsets, above, 3)
-
-#else
-
 #define newLZ_dec_LOs							newLZ_LOs
 #define newLZ_dec_LOs_Reset_Neg(lasts)			lasts.Reset_Neg()
 #define newLZ_dec_LOs_MTF(lasts,index)			lasts.MTF4(index)
 #define newLZ_dec_LOs_Add(lastoffsets,above)	lastoffsets.lasts[3] = above
-
-#endif
 
 //=============================================================================
 
@@ -1278,11 +1206,6 @@ bool newLZ_get_match_heuristic(match *pmatch,
 	return newLZ_get_match_heuristic_inline(pmatch,ctmf,1,lastoffsets,ptr,ptr_matchend,mml,literals_start,dictionarySize,true,pOptions);
 }
 
-#define NEWLZ_CHUNK_NO_MATCH_ZONE	16
-#define NEWLZ_MATCH_END_PAD			8
-
-#define NEWLZ_EXTRA_SCRATCH_MEM_FOR_FUZZ	64
-
 struct newlz_passinfo
 {
 	U32	literal_histo_raw[256];
@@ -1741,7 +1664,7 @@ static SINTa newLZ_encoder_arrays_output(
 //=============================================================================
 	
 // t_do_lazy_parse can be 1 or 2
-template<typename newLZ_CTMF,int t_do_lazy_parse,int t_do_match_backup,int t_step_literals_shift,int t_superfast_mode>
+template<typename newLZ_CTMF,int t_do_lazy_parse,int t_do_match_backup,int t_step_literals_shift>
 static SINTa newLZ_encode_chunk(const newlz_vtable * vtable,
 	newlz_encoder_scratch * scratch,
 	const U8 * dictionaryBase,
@@ -1790,7 +1713,10 @@ static SINTa newLZ_encode_chunk(const newlz_vtable * vtable,
 	// thing.
 	int parse_end_pos = chunk_len - NEWLZ_CHUNK_NO_MATCH_ZONE;
 	
-	newLZ_LOs lastoffsets;
+	// NOTE(fg): LO array crossing cache lines is a regular source of perf
+	// regressions; align it generously. (4 entries + 3 padding = 7 32-bit words,
+	// but hey, just align to 16)
+	RAD_ALIGN(newLZ_LOs, lastoffsets, 64);
 	lastoffsets.Reset();
 
 	// start at pos 1 :
@@ -1847,17 +1773,8 @@ static SINTa newLZ_encode_chunk(const newlz_vtable * vtable,
 			if ( rrPtrDiff(parse_end_ptr - ptr) <= (SINTa)step )
 				goto parse_chunk_done;
 
-			// In SF mode, don't look for lo0 match at current position. The intuition is that 
-			// there will never be one right after a match and find_lo0_match_ahead takes care of
-			// ml>=4 matches starting at the next position. So the only thing we can lose from not
-			// checking lo0 are ml=2 or 3 lo0 matches after at least one literal, and ml=4 lo0
-			// matches at the end of a skip-ahead run (step>1). (ml=5 lo0 will be caught as ml=4
-			// match at ptr+1 by find_lo_match_ahead, and then match backup rewinds to the right
-			// pos)
-			bool lo0_allowed = !t_superfast_mode;
-
 			// once we find a match, we can stop!
-			if ( newLZ_get_match_heuristic_inline(&chosen,ctmf,step,lastoffsets,ptr,ptr_matchend,mml,literals_start,dictionarySize,lo0_allowed,pOptions) )
+			if ( newLZ_get_match_heuristic_inline(&chosen,ctmf,step,lastoffsets,ptr,ptr_matchend,mml,literals_start,dictionarySize,true,pOptions) )
 				break;
 
 			if ( t_step_literals_shift )
@@ -1992,18 +1909,10 @@ static SINTa newLZ_encode_chunk(const newlz_vtable * vtable,
 
 		// should only check this on the *last* chunk :
 		// this isn't needed cuz chunk overrun zone gives plenty of padding already
-		if ( !t_superfast_mode )
-		{
-			ctmf->step_and_insert(ptr-chosen.ml,chosen.ml);
-		}
-		else
-		{
-			ctmf->step_and_insert_partial(ptr-chosen.ml,chosen.ml);
-		}
+		ctmf->step_and_insert(ptr-chosen.ml,chosen.ml);
 	}
 
 parse_chunk_done:;
-	
 	} // profiler scope
 
 	// output!
@@ -2051,7 +1960,10 @@ static SINTa newLZ_encode_chunk_fast_mode(const newlz_vtable * vtable,
 	newLZ_encoder_arrays encarrays;
 	newLZ_encoder_arrays_point_to_scratch(&encarrays,scratch,chunk_len,chunk_ptr,vtable->bitstream_flags);
 
-	newLZ_LOs lastoffsets;
+	// NOTE(fg): LO array crossing cache lines is a regular source of perf
+	// regressions; align it generously. (4 entries + 3 padding = 7 32-bit words,
+	// but hey, just align to 16)
+	RAD_ALIGN(newLZ_LOs, lastoffsets, 64);
 	lastoffsets.Reset();
 
 	// ptr_matchend is the match *end* limit
@@ -2357,38 +2269,9 @@ static SINTa newLZ_put_parse(
 // LRL or ML can be 128k ; so need 17 bits for log2 *2 = 34+1 = 35
 //	quite a bit in other words; pretty much always have to refill after this
 
-// ptr_sub_saturate = RR_MAX(base,ptr-sub_amount)
-//	but is safe for ptr wrapping invalid math issues
-static const U8 * ptr_sub_saturate( const U8 * ptr, SINTa sub_amount, const U8 * base )
-{
-	RR_ASSERT( ptr >= base );
-	return ( ptr - base ) < sub_amount ? base : ptr - sub_amount;
-}
-
-//===============================================
-
-struct newLZ_chunk_arrays
-{
-	U8 * chunk_ptr; // to verify
-	U8 * scratch_ptr;
-
-	S32 * offsets;
-	SINTa offsets_count;
-	
-	U32 * excesses;
-	SINTa excesses_count;
-	
-	U8 * packets;
-	SINTa packets_count;
-			
-	U8 const * literals_ptr;
-	SINTa literals_count;
-
-	S32 * pfoffsets;
-	SINTa pfoffsets_count;
-};
-
 //================================================		
+
+#ifndef DO_SSE4_PARSE_ALWAYS
 
 #define NEWLZ_DECODE_LITERALS_TYPE	NEWLZ_LITERALS_TYPE_RAW
 #define newLZ_decode_parse	newLZ_decode_parse_raw
@@ -2401,6 +2284,14 @@ struct newLZ_chunk_arrays
 #include "newlz_decode_parse_outer.inl"
 #undef newLZ_decode_parse
 #undef NEWLZ_DECODE_LITERALS_TYPE
+
+static const newLZ_decode_parse_func_set newLZ_decode_parse_funcs_regular =
+{
+	newLZ_decode_parse_raw,
+	newLZ_decode_parse_sub,
+};
+
+#endif // !DO_SSE4_PARSE_ALWAYS
 
 //================================================		
 
@@ -2722,30 +2613,38 @@ static RADINLINE SINTa newLZ_decode_chunk_phase2(
 	const newLZ_chunk_arrays * arrays)
 {
 	//SIMPLEPROFILE_SCOPE_N(newLZ_dec_phase2,chunk_len);
-	
+
 	#ifdef SPEEDFITTING
 	U64 t1 = speedfitter_ticks_start();
 	#endif
-		
+
 	if ( chunk_type > 1 ) // already checked in phase1
 		return -1;
-	
+
 	int start_pos = 0;
 	// on first chunk, start at NEWLZ_MIN_OFFSET
 	if ( chunk_pos == 0 ) start_pos = NEWLZ_MIN_OFFSET;
-	
+
 	U8 * to_ptr = chunk_ptr + start_pos;
 	U8 * chunk_end = chunk_ptr + chunk_len;	
-		
+
 	//=====================================================================
 	// now parse !
+
+	#if defined(DO_SSE4_PARSE_ALWAYS)
+	const newLZ_decode_parse_func_set * parse = &newLZ_decode_parse_funcs_sse4;
+	#elif defined(DO_SSE4_PARSE_TEST)
+	const newLZ_decode_parse_func_set * parse = newlz_simd_has_sse4() ? &newLZ_decode_parse_funcs_sse4 : &newLZ_decode_parse_funcs_regular;
+	#else
+	const newLZ_decode_parse_func_set * parse = &newLZ_decode_parse_funcs_regular;
+	#endif
 
 	if ( chunk_type == NEWLZ_LITERALS_TYPE_RAW )
 	{
 		bool res;
 
 		{
-			res = newLZ_decode_parse_raw(
+			res = parse->raw(
 				arrays,
 				to_ptr,chunk_ptr,chunk_end,chunk_ptr-chunk_pos);
 		}
@@ -2757,7 +2656,7 @@ static RADINLINE SINTa newLZ_decode_chunk_phase2(
 		bool res;
 
 		{
-			res = newLZ_decode_parse_sub(
+			res = parse->sub(
 				arrays,
 				to_ptr,chunk_ptr,chunk_end,chunk_ptr-chunk_pos);
 		}
@@ -2823,7 +2722,7 @@ S32 Kraken_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 quan
 	decomp_len; // unused
 
 	rrPrintf_v2("DBLOCK : %d : %d : %d\n",pos_since_reset,decomp_len,quantumCompLen);
-		
+
 	//SIMPLEPROFILE_SCOPE_N(newLZ_decode,decomp_len);
 	
 	U8 * scratch_ptr = U8_void(scratch);
@@ -2848,8 +2747,7 @@ S32 Kraken_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 quan
 		
 		// minimum length of a chunk is 4 bytes
 		//	3 byte comp len header + 1 byte payload
-		if ( compPtr+4 > compEnd )
-		//if ( compPtr+4 >= compEnd ) // <- BUG was this
+		if ( 4 > rrPtrDiff( compEnd - compPtr ) )
 			return -1;
 		
 		SINTa chunk_comp_len = RR_GET24_BE_OVERRUNOK(compPtr);
@@ -2862,12 +2760,13 @@ S32 Kraken_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 quan
 			//RR_ASSERT_ALWAYS( chunk_comp_len <= chunk_len );
 			
 			compPtr += 3;
-			
+
 			rrPrintf_v2("CHUNK : %d : %d\n",chunk_len,chunk_comp_len);
-		
-			const U8 * chunk_comp_end = compPtr + chunk_comp_len;
-			if ( chunk_comp_end > compEnd )
+
+			if ( chunk_comp_len > compEnd - compPtr )
 				return -1;
+
+			const U8 * chunk_comp_end = compPtr + chunk_comp_len;
 		
 			if ( chunk_comp_len >= chunk_len )
 			{			
@@ -5757,10 +5656,6 @@ void Kraken_FillVTable(
 		// if not explicitly given, limit table to 19 bits :
 		if ( pOptions->matchTableSizeLog2 <= 0 ) table_bits = RR_MIN(table_bits,19);
 		
-		// old SuperFast :
-		//newlz_vtable_setup_ctmf<newLZ_CTMF_SuperFast>(&vtable,dictionaryBase,raw,table_bits,arena);
-		//vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_SuperFast,0,1,5,1>;
-		
 		newlz_vtable_setup_ctmf<newLZ_CTMF_HyperFast32>(&vtable,dictionaryBase,raw,table_bits,arena,hash_len);
 		vtable.fp_encode_chunk = newLZ_encode_chunk_fast_mode<newLZ_CTMF_HyperFast32,5,1,0,1,1,1>;
 		
@@ -5776,7 +5671,7 @@ void Kraken_FillVTable(
 		typedef CTMF<U32,1,0,4>	newLZ_CTMF_VeryFast;
 	
 		newlz_vtable_setup_ctmf<newLZ_CTMF_VeryFast>(&vtable,dictionaryBase,raw,table_bits,arena,hash_len);
-		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_VeryFast,0,1,8,0>;
+		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_VeryFast,0,1,8>;
 		
 		// Disallow the less common entropy types in fast modes (RLE is now on)
 		//	-> could allow RLE but not RLEHUFF ?
@@ -5789,7 +5684,7 @@ void Kraken_FillVTable(
 		typedef CTMF<U32,2,0,4>	newLZ_CTMF_Fast;
 	
 		newlz_vtable_setup_ctmf<newLZ_CTMF_Fast>(&vtable,dictionaryBase,raw,table_bits,arena,hash_len);
-		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_Fast,1,1,0,0>;
+		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_Fast,1,1,0>;
 		
 		// Disallow the less common entropy types in fast modes
 		vtable.entropy_flags &= ~(NEWLZ_ARRAY_FLAG_ALLOW_TANS | NEWLZ_ARRAY_FLAG_ALLOW_SPLIT);
@@ -5818,7 +5713,7 @@ void Kraken_FillVTable(
 			
 		newlz_vtable_setup_ctmf<newLZ_CTMF_Normal>(&vtable,dictionaryBase,raw,table_bits,arena);
 		
-		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_Normal,2,1,0,0>;
+		vtable.fp_encode_chunk = newLZ_encode_chunk<newLZ_CTMF_Normal,2,1,0>;
 		
 		if ( level == OodleLZ_CompressionLevel_Normal )
 		{

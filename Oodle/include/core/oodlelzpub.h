@@ -1069,6 +1069,7 @@ OOINLINEFUNC OO_BOOL OodleLZ_Compressor_CanDecodeFuzzSafe(OodleLZ_Compressor com
 {
 	#ifdef OODLE_ALLOW_DEPRECATED_COMPRESSORS
 	const OO_U32 set =
+		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_None) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Kraken) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Leviathan) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Mermaid) |
@@ -1087,6 +1088,7 @@ OOINLINEFUNC OO_BOOL OodleLZ_Compressor_RespectsDictionarySize(OodleLZ_Compresso
 {
 	#ifdef OODLE_ALLOW_DEPRECATED_COMPRESSORS
 	const OO_U32 set =
+		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_None) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Kraken) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Leviathan) |
 		OODLELZ_COMPRESSOR_MASK(OodleLZ_Compressor_Mermaid) |

@@ -88,62 +88,9 @@ F64 rrlog2_F64( const F64 X )
     return approx;
 }
 
-#if 0
-// -> no point in approximate log2 functions
-// if you want fast/approx log2 use the table lookups
-F32 rrlog2f_approx( const F32 X )
-{
-    RR_ASSERT( X > 1.0f ); // can't return negatives
-
-    rrFloatAnd32 fi;
-    fi.f = X;
-
-    // get the float as an int, subtract off exponent bias
-    float vv = (float) (fi.i - (127<<23));
-
-    vv *= (1.f/8388608);
-
-    // vv is now like a fixed point with the exponent in the int
-    //  and the mantissa in the fraction
-    //
-    // that is actually already an approximate log2, but very inaccurate
-
-    // get the fractional part of vv :
-    //float frac = vv - ftoi(vv);
-
-    fi.i = (fi.i & 0x7FFFFF) | (127<<23);
-    float frac = fi.f - 1.f;
-
-    // use frac to apply a correction hump :
-    const float C = 0.346573583f;
-
-    F32 approx = vv + C * frac * (1.f - frac);
-
-    RR_DURING_ASSERT( F64 exact =  rrlog2( X ) );
-    RR_ASSERT( fabs(exact - approx) <= 0.01 );
-
-    return approx;
-}
-#endif
-
-U32 rrIlog2floorf(F32 val)
-{
-    return ((rrF32AsInt(val)) >> 23) - 127;
-}
-
-U32 rrIlog2ceilf(F32 val)
-{
-    return ((rrF32AsInt(val) + 0x7FFFFF) >> 23) - 127;
-}
-
 U32 rrIlog2roundf(F32 val)
 {
     return ((rrF32AsInt(val) + 0x257D86) >> 23) - 127;
-}
-
-U32 rrIlog2round(U32 val)
-{
-    return rrIlog2roundf( (F32)val );
 }
 
 // don't require CRT

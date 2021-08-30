@@ -2698,7 +2698,7 @@ SINTa newLZ_put_multiarray_indexed_sub(U8 * const out_ptr, U8 * const out_end,
 		// keep doing merges past target count if the J gain is >= initial_merge_min_gain_J
 		F32 initial_merge_min_gain_J = 0.f;
 		
-		merge_entropysets(histos,initial_merge_J_gain,initial_merge_min_gain_J, target_num_arrays, entropysets_order0_codelen_bits, arena);
+		merge_entropysets(histos,initial_merge_J_gain,initial_merge_min_gain_J, target_num_arrays, entropysets_order0_codelen_bits_cpudetect(), arena);
 	}
 		
 	int num_entropysets = histos.size32();

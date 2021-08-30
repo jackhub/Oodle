@@ -32,20 +32,24 @@ enum EDXTCRD_Metric
 
 //--------------------------------------------
 
+void rrDXTCRD_SetDefaults(rrDXTCRD_Options * rdopts);
+
 // rrDXTCRD_Encode_RDO : encode baseline then ReadBaseline
 //	called by public API
 bool rrDXTCRD_Encode_RDO(BlockSurface * to_blocks,const BlockSurface * from_blocks,
 				const rrSurface * from_surfaces, int num_from_surfaces, const OodleTex_Layout * layout,
-				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric);
+				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric,
+				const rrDXTCRD_Options &rdopts);
 
 bool rrDXTCRD_Encode_RDO_LinearSurface(rrSurface * to_surface,
 				const rrSurface * from_surface,
-				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric);
+				int lambda,rrDXTCOptions options,void * jobify_user_ptr,int num_workers,EDXTCRD_Metric metric,
+				const rrDXTCRD_Options &rdopts);
 
 //--------------------------------------------
 // make an RDO Context for the source image that can be used repeatedly
 //	then encode with _ReadContext to various lambdas
-				
+
 struct rrDXTCRD_Context;		
 rrDXTCRD_Context * rrDXTCRD_Context_New();
 void rrDXTCRD_Context_Delete(rrDXTCRD_Context * ctx);
@@ -54,14 +58,22 @@ rrbool rrDXTCRD_Context_Init(rrDXTCRD_Context * ctx,
 				rrPixelFormat to_pf,
 				const BlockSurface * from_blocks, const rrSurface * from_surfaces,int num_from_surfaces, const OodleTex_Layout * layout,
 				rrDXTCOptions options,void * jobify_user_ptr,int num_workers,
-				EDXTCRD_Metric metric);
-				
+				EDXTCRD_Metric metric,const rrDXTCRD_Options &rdopts);
+
+bool rrDXTCRD_Encode_RDO_ReadContext_Ex(
+	const rrDXTCRD_Context * ctx,
+	BlockSurface * to_blocks,
+	int lambda,const rrDXTCRD_Options &rdopts,
+	void * jobify_user_ptr, int num_workers);
 bool rrDXTCRD_Encode_RDO_ReadContext(
 	const rrDXTCRD_Context * ctx,
 	BlockSurface * to_blocks,
-	int lambda,void * jobify_user_ptr);
+	int lambda,void * jobify_user_ptr, int num_workers);
 
+const BlockSurface * rrDXTCRD_Context_GetActivity(rrDXTCRD_Context * ctx);
 const BlockSurface * rrDXTCRD_Context_GetBaseline(rrDXTCRD_Context * ctx);
+const BlockSurface * rrDXTCRD_Context_GetFrom(rrDXTCRD_Context * ctx);
+rrDXTCOptions rrDXTCRD_Context_GetOptions(rrDXTCRD_Context * ctx);
 
 //--------------------------------------------
 

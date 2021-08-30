@@ -272,9 +272,7 @@ RADNOINLINE const U8 * newLZF_decode_parse(
 
 			// -> big win on the Cortex-A57, so enabled there
 			// solid win on Linux ARM RockPro64 (A72) as well
-
-			// a wash on 2 year old iPad
-			// -> @@ TODO test on more newer ARM64 devices some day
+			// and also solid win on current (as of 2020/2021) Apple devices
 
 			/**
 			
@@ -316,10 +314,10 @@ RADNOINLINE const U8 * newLZF_decode_parse(
 			// (I've exhaustively tested the 32-bit version of this logic, including
 			// counting the length of the resulting runs, to make sure this is right.)
 
-			U64 packets_8 = RR_GET64_LE(packets_ptr);
-			U64 cmp_mask = packets_8 - 0x1818181818181818ULL; // - splat_byte(24)
+			U64 packets_8a = RR_GET64_LE(packets_ptr);
+			U64 cmp_mask = packets_8a - 0x1818181818181818ULL; // - splat_byte(24)
 			
-			cmp_mask &= ~packets_8; // exclude packets >=128 (see notes above)
+			cmp_mask &= ~packets_8a; // exclude packets >=128 (see notes above)
 			cmp_mask &= 0x8080808080808080ULL; // just the MSBs
 
 			// maybe rewrite to get the two packets at once (for LDP)
@@ -327,23 +325,22 @@ RADNOINLINE const U8 * newLZF_decode_parse(
 
 			if ( cmp_mask == 0 )
 			{
+				U64 packets_8b = RR_GET64_LE(packets_ptr+8);
+
 				// check 8 more :
-				packets_8 = RR_GET64_LE(packets_ptr+8);
-				cmp_mask = packets_8 - 0x1818181818181818ULL; // - splat_byte(24)
+				cmp_mask = packets_8b - 0x1818181818181818ULL; // - splat_byte(24)
 				
-				cmp_mask &= ~packets_8; // exclude packets >=128 (see notes above)
+				cmp_mask &= ~packets_8b; // exclude packets >=128 (see notes above)
 				cmp_mask &= 0x8080808080808080ULL; // just the MSBs
 			
 				// do 8 !
-				NEWLZF_FOUR_SIMPLE_PACKETS_SCALAR();
-				NEWLZF_FOUR_SIMPLE_PACKETS_SCALAR();	
-								
+				NEWLZF_EIGHT_SIMPLE_PACKETS_SCALAR_PRELOADED(packets_8a);
+
 				if ( cmp_mask == 0 )
 				{
 					// do 8 !
-					NEWLZF_FOUR_SIMPLE_PACKETS_SCALAR();
-					NEWLZF_FOUR_SIMPLE_PACKETS_SCALAR();
-					
+					NEWLZF_EIGHT_SIMPLE_PACKETS_SCALAR_PRELOADED(packets_8b);
+
 					// did 16, now checkpoint
 					continue;
 				}

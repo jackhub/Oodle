@@ -39,7 +39,13 @@ void Compress_SingleColor_Compact(rrDXT1Block * dxtBlock,
 
 void Compress_SingleColor_Compact_3C(rrDXT1Block * dxtBlock,
 							const rrColor32BGRA & c);
-							
+
+// Optimal single color fit tables
+extern const U8 BC1_Opt5Tab_3C[512]; // 3-color mode, 5-bit endpoints
+extern const U8 BC1_Opt5Tab_4C[512]; // 4-color mode, 5-bit endpoints
+extern const U8 BC1_Opt6Tab_3C[512]; // 3-color mode, 6-bit endpoints
+extern const U8 BC1_Opt6Tab_4C[512]; // 4-color mode, 6-bit endpoints
+
 RR_NAMESPACE_END
 							
 #endif // __RADRRBITMAP_DXTC_COMPRESS_HELP_H__

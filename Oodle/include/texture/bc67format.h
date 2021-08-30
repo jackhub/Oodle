@@ -125,9 +125,13 @@ struct BC6HBlockRawDesc
 	// Partition ID is also in the header
 	U8 partition_id;
 
+	// Endpoints in BC6H quantized format; these are the integers encoded
+	// in the block after delta decoding
+	S32 endpoints_quant[3][4]; // [channel][index]
+
 	// Endpoints in BC6H internal format, that is, 17-bit signed and without
 	// the final dequantization step applied.
-	S32 endpoints_raw[3][4]; // [channel][index]
+	S32 endpoints_internal[3][4]; // [channel][index]
 
 	// Decoded indices
 	U8 inds[16];

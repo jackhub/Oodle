@@ -113,35 +113,31 @@ rrbool rrSurfaceDXTC_CompressBC7(BlockSurface * to, const BlockSurface * from, r
 
 	RR_ASSERT( from->count == to->count );
 	RR_ASSERT( to->pixelFormat == rrPixelFormat_BC7 );
+	
+	// was_rgbx is not the same as ignore alpha
+	//	it means you should read A=255 ; you might want to then preserve that value or not
+	bool was_rgbx = ( from->pixelFormat == rrPixelFormat_R8G8B8x8 || from->pixelFormat == rrPixelFormat_B8G8R8x8 );
+	bool read_alpha = (!( options & rrDXTCOptions_BC7_IgnoreAlpha )) && ( ! was_rgbx );
 
 	// rrColor32RGBA not rrColor32BGRA
 	BlockSurfaceObj from_converted;
-	bool rgbx_ok = (options & rrDXTCOptions_BC7_IgnoreAlpha);
+	bool rgbx_ok = true; // always allow RGBX, we'll KillAlpha on the block read if was_rgbx
 	bool is_rgba = BlockSurface_SetView_to_RGBA8_or_BGRA8(&from_converted,from,rgbx_ok,rrPixelFormat_R8G8B8A8);
 			
 	// for each block :
 	
-	if ( ! is_rgba )
+	for LOOP(blocki,from->count)
 	{
-		for LOOP(blocki,from->count)
-		{
-			const U8 * inPtr = BlockSurface_SeekC(&from_converted,blocki);
-			U8 * outPtr = BlockSurface_Seek(to,blocki);
+		const U8 * inPtr = BlockSurface_SeekC(&from_converted,blocki);
+		U8 * outPtr = BlockSurface_Seek(to,blocki);
 		
-			rrColorBlock4x4 colors = *((const rrColorBlock4x4 *)inPtr);
-			SwapRB(&colors);
-			BC7_CompressBlock(outPtr, (const U8 *)&colors, level, options);
-		}
-	}
-	else
-	{
-		for LOOP(blocki,from->count)
-		{
-			const U8 * inPtr = BlockSurface_SeekC(&from_converted,blocki);
-			U8 * outPtr = BlockSurface_Seek(to,blocki);
-		
-			BC7_CompressBlock(outPtr, inPtr, level, options);
-		}
+		// could skip this if is_rgba && read_alpha, but whatevs
+		rrColorBlock4x4 colors = *((const rrColorBlock4x4 *)inPtr);
+		if ( ! is_rgba ) SwapRB(&colors);
+		if ( ! read_alpha ) KillAlpha(colors);
+		// BC7Prep_init does KillAlpha again if rrDXTCOptions_BC7_IgnoreAlpha is set
+
+		BC7_CompressBlock(outPtr, (const U8 *)&colors, level, options);
 	}
 
 	return true;

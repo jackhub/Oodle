@@ -835,14 +835,14 @@ struct O0ArithCoderJump_Const
 		return ret;
 	}
 	
-	void set_from_histo(const U32 * histo)
+	void set_from_histo(const U32 * histo,int for_oodle_major_version)
 	{		
 		RR_ASSERT( t_count_max >= t_alphabet*4 );
 		
 		U32 histo_sum = rrSumOfHistogram(histo,t_alphabet);
 		
 		U32 normalized_counts[t_alphabet];
-		normalize_counts(normalized_counts,c_sum,histo,histo_sum,t_alphabet);
+		normalize_counts(for_oodle_major_version,normalized_counts,c_sum,histo,histo_sum,t_alphabet);
 		
 		set_from_histo_normalized(normalized_counts);
 	}

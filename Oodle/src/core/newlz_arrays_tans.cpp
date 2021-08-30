@@ -219,7 +219,7 @@ SINTa newLZ_put_array_tans(U8 * const to, U8 * const to_end, const U8 * const fr
 	RR_ASSERT( alphabet == 256 || histogram[alphabet] == 0 );
 			
 	U32 normc[256];
-	S32 num_non_zero = normalize_counts(normc,normc_sum,histogram,(int)from_len,alphabet);
+	S32 num_non_zero = normalize_counts_current(normc,normc_sum,histogram,(int)from_len,alphabet);
 
 	// put back 5 removed counts :
 	nonconst_histogram[ from[from_len+0] ] ++;

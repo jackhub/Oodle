@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "texbase.h"
+#include "oodletexpub.h"
 #include "templates/rrvector.h"
 
 OODLE_NS_START
@@ -26,17 +26,23 @@ RR_COMPILER_ASSERT(sizeof(BlockLocation8) == 8);
 
 struct OodleTex_Layout
 {
-	OodleTex_Layout(SINTa block_size); // block size in bytes
+	explicit OodleTex_Layout(SINTa block_size); // block size in bytes
 	~OodleTex_Layout();
 
 	OodleTex_Err GenerateBlockIDs(int surface_index, void * block_ids, SINTa block_id_row_stride_bytes) const;
 	OodleTex_Err SetBlockLayout(const void * reordered_block_ids, SINTa num_reordered_blocks);
+
+	// Set up this layout for universal tiling
+	OodleTex_Err InitUniversal(OodleTex_RDO_UniversalTiling tiling);
 
 	struct SurfaceInfo
 	{
 		S32 width;
 		S32 height;
 	};
+
+	int m_tile_w; // 0 for "proper" layouts; non-0 indicates a pure tiled layout with this tile width
+	int m_tile_h; // 0 for "proper" layouts; non-0 indicates a pure tiled layout with this tile height
 
 	SINTa m_block_size;
 	SINTa m_nblocks;

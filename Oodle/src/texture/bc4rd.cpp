@@ -17,8 +17,8 @@
 #include "templates/rrvector.h"
 #include "templates/rralgorithm.h"
 
-//#include "rrsimpleprof.h"
-#include "rrsimpleprofstub.h"
+#include "rrsimpleprof.h"
+//#include "rrsimpleprofstub.h"
 
 RR_NAMESPACE_START
 
@@ -30,6 +30,9 @@ RR_NAMESPACE_START
 //#define BC4RD_LAMBDA_SCALE 1.25f // before
 //#define BC4RD_LAMBDA_SCALE	(1.7f) // BC1
 #define BC4RD_LAMBDA_SCALE	(1.5f * OO2TEX_GLOBAL_LAMBDA_SCALE) // down a bit from BC1
+
+// Enable index SAD to prune index reuse candidates.
+#define ENABLE_INDEX_SAD
 
 // HIGH CONCEPT:
 //
@@ -51,6 +54,105 @@ RR_NAMESPACE_START
 //   reusing one of them gives acceptable error (as per the R-D metric).
 // - Bottom-up index merge. Quasi-VQ scheme to merge indices between groups of
 //   blocks when doing so is visually acceptable.
+
+struct BC4Config
+{
+	// The size of the window to search in index pass
+	int window_size;
+	// Size of the index candidate heap
+	int index_heap_size;
+	// Whether to allow recalculation of endpoints?
+	bool allow_recalc_for_link;
+	// Max number of blocks in a set for us to consider recalculating the endpoints
+	U32 max_count_for_recalc;
+	// If a candidate merge's initial error isn't this much worse than the cut-off,
+	// try whether solving for new endpoints gets us below the threshold.
+	//
+	// We don't want to do the full-solve on hopeless candidates, which is going
+	// to be most of them.
+	int distortion_ratio_for_refine;
+};
+
+static const BC4Config c_config_levels[rrDXTCLevel_Count] =
+{
+	//rrDXTCLevel_VeryFast=0,	// == 1 secret level in OodleTex_ API ; too low quality, not currently well optimized for this quality-speed tradeoff
+	{
+		// window_size
+		256,
+		// index_heap_size
+		16,
+		// allow_recalc_for_link
+		true,
+		// max_count_for_recalc
+		8,
+		// distortion_ratio_for_refine
+		3
+	},
+
+	//rrDXTCLevel_Fast=1,		// == OodleTex_EncodeEffortLevel_Low
+	{
+		// window_size
+		64,
+		// index_heap_size
+		4,
+		// allow_recalc_for_link
+		true,
+		// max_count_for_recalc
+		4,
+		// distortion_ratio_for_refine
+		2
+	},
+
+	//rrDXTCLevel_Slow=2,		// == OodleTex_EncodeEffortLevel_Normal
+	{
+		// window_size
+		256,
+		// index_heap_size
+		16,
+		// allow_recalc_for_link
+		true,
+		// max_count_for_recalc
+		8,
+		// distortion_ratio_for_refine
+		3
+	},
+
+	//rrDXTCLevel_VerySlow=3,	// == OodleTex_EncodeEffortLevel_High == OodleTex_EncodeEffortLevel_Default
+	{
+		// window_size
+		256,
+		// index_heap_size
+		16,
+		// allow_recalc_for_link
+		true,
+		// max_count_for_recalc
+		8,
+		// distortion_ratio_for_refine
+		3
+	},
+
+	//rrDXTCLevel_Reference=4	// == 99 secret level in OodleTex_ API ; too slow to be practical, not a good time-quality tradeoff; just a max quality reference
+	{
+		// window_size
+		256,
+		// index_heap_size
+		16,
+		// allow_recalc_for_link
+		true,
+		// max_count_for_recalc
+		8,
+		// distortion_ratio_for_refine
+		3
+	}
+};
+
+const BC4Config& bc4rd_get_config(rrDXTCLevel effort)
+{
+	//rrprintf("bc4rd_get_config: effort level=%d (%s)\n", effort, rrDXTCLevel_GetName(effort));
+
+	RR_ASSERT( 0 <= (int)effort && (int)effort < RR_ARRAY_SIZE(c_config_levels) );
+	return c_config_levels[effort];
+}
 
 // input format is what source format the rrPixelFormat corresponds to
 static BC4SourceFormat translate_input_format(rrPixelFormat fmt)
@@ -142,6 +244,16 @@ struct BC4EndpointEncInfo
 
 	BC4EndpointEncoding enc;
 };
+
+static bool bc4_is_6interp(U8 e0, U8 e1, const BC4EndpointEncInfo & info)
+{
+	// Linear-space endpoints to compare to decide endpoint ordering
+	// for unsigned values, this does nothing
+	// for signed values, it gives us (signed_value + 128), which compares correctly
+	int e0q = e0 ^ info.enc.sign_mask;
+	int e1q = e1 ^ info.enc.sign_mask;
+	return e0q > e1q;
+}
 
 // Tracks which pixels of a block are constrained to either the minimum or maximum value
 // in preserve extremes mode
@@ -285,23 +397,120 @@ static void init_index_cache(BC4IndexCache * ic, U64 inds, int variant, const BC
 	ic->degen_bias = (variant == 1) ? bias * count_scale : -bias * count_scale;
 }
 
+// Predecoded indices for index SAD calculation
+union BC4SADIndices
+{
+	U8 inds[16];
+#ifdef __RADSSE2__
+	Vec128 vec;
+#endif
+
+	void init_from_reference(const BC4SourceData & pixels, U8 e0, U8 e1, const BC4EndpointEncInfo & info);
+	void init_from_predecoded(const U8 predecoded_inds[16], int variant);
+
+	// sum of absolute differences between *this and x
+	int sad(const BC4SADIndices& x) const;
+};
+
+#define BC4_SAD_WEIGHT_RANGE (2*5*7) // make sure this divides both 5 and 7 so spacing of interpolated values is exact
+#define BC4_SAD_WEIGHT_BASE ((256 - BC4_SAD_WEIGHT_RANGE) / 2)
+
+// Compute "ideal" indices from actual pixel values, independent of what
+// values we can actually hit with quantization
+void BC4SADIndices::init_from_reference(const BC4SourceData & pixels, U8 e0, U8 e1, const BC4EndpointEncInfo & info)
+{
+	int deq_e0 = info.enc.dequant[e0];
+	int deq_e1 = info.enc.dequant[e1];
+
+
+	if ( bc4_is_6interp(e0, e1, info) )
+	{
+		// six-index mode is easier: e0 > e1
+		F32 scaling = F32(BC4_SAD_WEIGHT_RANGE) / ( deq_e0 - deq_e1 );
+		for LOOP(i,16)
+		{
+			F32 v = scaling * ( pixels.values[i] - deq_e1 ) + (BC4_SAD_WEIGHT_BASE + 0.5f);
+			v = RR_CLAMP(v, F32(BC4_SAD_WEIGHT_BASE/2), F32(255 - BC4_SAD_WEIGHT_BASE/2));
+
+			inds[i] = (U8) v;
+		}
+	}
+	else
+	{
+		// four-index mode: e0 <= e1
+		F32 scaling = (deq_e1 != deq_e0) ? F32(BC4_SAD_WEIGHT_RANGE) / (deq_e1 - deq_e0) : 0.0f;
+		int halfway_to_min = (deq_e0 + info.enc.min_deq) / 2;
+		int halfway_to_max = (deq_e1 + info.enc.max_deq + 1) / 2;
+
+		for LOOP(i,16)
+		{
+			int input = pixels.values[i];
+			if ( input <= halfway_to_min )
+				inds[i] = 0;
+			else if ( input >= halfway_to_max )
+				inds[i] = 255;
+			else
+			{
+				F32 v = scaling * ( input - deq_e0 ) + (BC4_SAD_WEIGHT_BASE + 0.5f);
+				v = RR_CLAMP(v, F32(BC4_SAD_WEIGHT_BASE/2), F32(255 - BC4_SAD_WEIGHT_BASE/2));
+				inds[i] = (U8) v;
+			}
+		}
+	}
+}
+
+// Compute indices that an actual encoded block corresponds to; requires predecoded inds
+void BC4SADIndices::init_from_predecoded(const U8 predecoded_inds[16], int variant)
+{
+	// only even indices are accessed because our predecoded inds are scaled by 2
+#define WEIGHT(numer,denom) (BC4_SAD_WEIGHT_BASE + BC4_SAD_WEIGHT_RANGE*(numer)/(denom)),0
+	static RAD_ALIGN(const U8, luts[2][16], 16) =
+	{
+		// four-interp mode has e0 <= e1, so always-min index is below regular endpoint min,
+		// and always-max index is above regular endpoint max
+		// choice of 16 and 240 for the two is arbitrary
+		{ WEIGHT(0,5), WEIGHT(5,5), WEIGHT(1,5), WEIGHT(2,5), WEIGHT(3,5), WEIGHT(4,5), 0,0, 255,0 },
+		// six-interp mode has e0 > e1 so we order these in reverse
+		{ WEIGHT(7,7), WEIGHT(0,7), WEIGHT(6,7), WEIGHT(5,7), WEIGHT(4,7), WEIGHT(3,7), WEIGHT(2,7), WEIGHT(1,7) },
+	};
+#undef WEIGHT
+
+#ifdef DO_BUILD_SSE4
+	Vec128 lut = load128u(luts[variant]);
+	vec = _mm_shuffle_epi8(lut, load128u(predecoded_inds));
+#else
+	for (int i = 0; i < 16; ++i)
+		inds[i] = luts[variant][predecoded_inds[i]];
+#endif
+}
+
+int BC4SADIndices::sad(const BC4SADIndices& x) const
+{
+#ifdef __RADSSE2__
+	// compute SADs across groups of 8 pixels
+	Vec128 sad0 = _mm_sad_epu8(vec, x.vec);
+
+	// sum for groups of 16
+	Vec128 sad1 = _mm_add_epi32(sad0, shuffle32<2,3,0,1>(sad0));
+
+	return _mm_cvtsi128_si32(sad1);
+#else
+	int sum = 0;
+	for LOOP(i,16)
+		sum += abs(inds[i] - x.inds[i]);
+
+	return sum;
+#endif
+}
+
 struct BC4WindowEntry
 {
 	BC4Block block;
 	U8 predecoded_inds[16];
+	BC4SADIndices sad_inds[2]; // predecoded SAD inds for both modes
 	int most_recent_bi; // block index we were most recently used in
 	BC4IndexCache inds[2]; // index caches for the two modes
 };
-
-static bool bc4_is_6interp(U8 e0, U8 e1, const BC4EndpointEncInfo & info)
-{
-	// Linear-space endpoints to compare to decide endpoint ordering
-	// for unsigned values, this does nothing
-	// for signed values, it gives us (signed_value + 128), which compares correctly
-	int e0q = e0 ^ info.enc.sign_mask;
-	int e1q = e1 ^ info.enc.sign_mask;
-	return e0q > e1q;
-}
 
 static U64 bc4_flip_4interp(U64 indices)
 {
@@ -542,6 +751,10 @@ static void bc4_predecode_inds(U8 predecoded_inds[16], const U64 * pIndices)
 	}
 #endif
 }
+
+#ifdef EXPERIMENTAL_INDEX_SAD
+
+#endif // EXPERIMENTAL_INDEX_SAD
 
 static void bc4_decode_with_inds_and_pal(S16 * out_values, const U8 predecoded_inds[16], const S16 palette[8])
 {
@@ -808,7 +1021,7 @@ static RADFORCEINLINE void cached_lls_solve(U8 * pEp0, U8 * pEp1, const BC4Block
 		// Degenerate case is hit in three circumstances:
 		// 1. the original LLS system was singular. In that case, init_index_cache
 		//    sets us up with a linear system that ensures we end up here.
-		// 2. the LLS solution gave two endpoints that close enough together to
+		// 2. the LLS solution gave two endpoints that are close enough together to
 		//    quantize to the same number.
 		// 3. the LLS solution gave us two endpoints that are ordered so they don't
 		//    give the mode we want to hit.
@@ -961,13 +1174,6 @@ static RADFORCEINLINE S64 bc4rd_single_block_index_change_distortion(int bi,
 	return bc4rd_single_block_change_distortion(bi,blocks,infos,enc_info,indices_from,blocks[bi].palette);
 }
 
-// If a candidate merge's initial error isn't this much worse than the cut-off,
-// try whether solving for new endpoints gets us below the threshold.
-//
-// We don't want to do the full-solve on hopeless candidates, which is going
-// to be most of them.
-#define DISTORTION_RATIO_FOR_REFINE 3
-
 // walk block link starting at bi
 // change indices to "new_indices"
 // measure total distortion
@@ -976,6 +1182,7 @@ static S64 bc4rd_block_link_distortion(int bi,
 	const vector<BC4BlockInfo> & infos,
 	const BC4IndexVqEntry * indices_from,
 	const BC4EndpointEncInfo & enc_info,
+	const BC4Config & config,
 	bool allow_new_endpoints,
 	S64 must_beat_D = LARGE_D_S32)
 {
@@ -986,7 +1193,7 @@ static S64 bc4rd_block_link_distortion(int bi,
 		// we can always keep the existing endpoints
 		S64 best_D = bc4rd_single_block_index_change_distortion(bi,blocks,infos,enc_info,indices_from);
 
-		if ( allow_new_endpoints && best_D <= (must_beat_D - D_sum) * DISTORTION_RATIO_FOR_REFINE )
+		if ( allow_new_endpoints && best_D <= (must_beat_D - D_sum) * config.distortion_ratio_for_refine )
 		{
 			U8 ep0, ep1;
 			cached_lls_solve(&ep0,&ep1,infos[bi],&indices_from->indc,enc_info,indices_from->mode);
@@ -1083,7 +1290,8 @@ static void make_heap_bottom_up_merge_fm_singleton(
 	int fm,
 	F32 lambda,
 	S64 max_distortion_increase,
-	const BC4EndpointEncInfo & enc_info)
+	const BC4EndpointEncInfo & enc_info,
+	const BC4Config & config)
 {
 	S64 fm_base_distortion = entries[fm].distortion_sum;
 
@@ -1111,7 +1319,7 @@ static void make_heap_bottom_up_merge_fm_singleton(
 		S64 new_index_D = bc4rd_single_block_change_distortion(fm_bi, blocks, infos, enc_info, &entries[to], palette);
 
 		// if that's close enough that we think it might be viable, try solving for new endpoints
-		if ( new_index_D <= best_distortion * DISTORTION_RATIO_FOR_REFINE )
+		if ( new_index_D <= best_distortion * config.distortion_ratio_for_refine )
 		{
 			U8 ep0, ep1;
 			cached_lls_solve(&ep0,&ep1,infos[fm_bi],&entries[to].indc,enc_info,entries[to].mode);
@@ -1290,9 +1498,13 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 	F32 vqd_lambda,
 	int group_shift,
 	const vector<BC4BlockInfo> & infos,
-	const BC4EndpointEncInfo & enc_info)
+	const BC4EndpointEncInfo & enc_info,
+	const BC4Config & config)
 {
-	SIMPLEPROFILE_SCOPE(bc4rd_bottom_up_merge);
+	int group_mask = (1 << group_shift) - 1;
+	int nb = bc4_blocks->count << group_shift;
+
+	SIMPLEPROFILE_SCOPE_N(bc4rd_bottom_up_merge,nb);
 
 	// VQD ~ 2*SSD
 	// @@@@ NOTE(fg): REALLY not true for some of our BC4s!!!!
@@ -1302,9 +1514,6 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 	// therefore, if we switch from VQD (outside) to SSD (inside) as a distortion
 	// metric, we need to scale lambda down proportionately
 	F32 lambda = vqd_lambda / 2.0f;
-
-	int group_mask = (1 << group_shift) - 1;
-	int nb = bc4_blocks->count << group_shift;
 
 	vector<BC4IndsAndId> v_indices;
 	vector<BC4IndexVqBlock> blocks;
@@ -1399,10 +1608,6 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 	// D threshold for dj > 0 :
 	S64 max_distortion_increase = static_cast<S64>(48.0f*lambda);
 
-	// Max number of blocks in a set for us to consider recalculating the endpoints
-	const U32 kMaxCountForRecalc = 8;
-	const bool kAllowRecalcForLink = true;
-
 	// sort entries by count (decreasing) so we go in rate-increasing order
 	stdsort(entries.begin(),entries.end());
 	RR_ASSERT( entries[0].count >= entries[1].count );
@@ -1415,7 +1620,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 	int first_singleton = entries_size;
 
 	{
-	SIMPLEPROFILE_SCOPE(bum_groups_make);
+	SIMPLEPROFILE_SCOPE_N(bum_groups_make,first_singleton);
 
 	vector<S64> best_distortions;
 	best_distortions.resize(first_singleton);
@@ -1435,9 +1640,9 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 			if ( entries[fm].count <= 1 ) break; // count sorted order so when we hit a 1 we break
 
 			S64 fm_base_distortion = entries[fm].distortion_sum;
-			bool allow_new_endpoints = kAllowRecalcForLink && entries[fm].count <= kMaxCountForRecalc;
+			bool allow_new_endpoints = config.allow_recalc_for_link && entries[fm].count <= config.max_count_for_recalc;
 
-			RR_DURING_ASSERT( S64 check_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[fm], enc_info, false ) );
+			RR_DURING_ASSERT( S64 check_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[fm], enc_info, config, false ) );
 			RR_ASSERT( check_D == fm_base_distortion );
 
 			// only bother looking if within max_distortion_increase
@@ -1465,7 +1670,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 				RR_ASSERT( entries[fm].count > 1 );
 
 				// try changing fm sets' indices to "to" :
-				S64 new_index_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[to], enc_info, allow_new_endpoints, best_distortion );
+				S64 new_index_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[to], enc_info, config, allow_new_endpoints, best_distortion );
 
 				// entries are sorted by count so I only have to look at J when D gets better
 				//  (this is an approximation, tests indicate it's okay)
@@ -1505,7 +1710,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 	//===========================================
 	// make heap for singletons
 	{
-	SIMPLEPROFILE_SCOPE(bum_singles_make);
+	SIMPLEPROFILE_SCOPE_N(bum_singles_make,entries_size-first_singleton);
 
 	// fm starts where we broke out of groups
 	RR_ASSERT( first_singleton == entries_size || entries[first_singleton].count == 1 );
@@ -1518,7 +1723,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 		// only singleton sources :
 		RR_ASSERT( entries[fm].count == 1 );
 
-		make_heap_bottom_up_merge_fm_singleton(heap,entries,blocks,infos,fm,lambda,max_distortion_increase,enc_info);
+		make_heap_bottom_up_merge_fm_singleton(heap,entries,blocks,infos,fm,lambda,max_distortion_increase,enc_info,config);
 	}
 	}
 	}
@@ -1569,15 +1774,15 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 			// make a new candidate for me to merge onto merged_to
 
 			S64 fm_base_distortion = entries[fm].distortion_sum;
-			bool allow_new_endpoints = kAllowRecalcForLink && entries[fm].count <= kMaxCountForRecalc;
+			bool allow_new_endpoints = config.allow_recalc_for_link && entries[fm].count <= config.max_count_for_recalc;
 
-			RR_DURING_ASSERT( S64 check_D = bc4rd_block_link_distortion( entries[fm].block_link , blocks, infos, &entries[fm], enc_info, false ) );
+			RR_DURING_ASSERT( S64 check_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[fm], enc_info, config, false ) );
 			RR_ASSERT( check_D == fm_base_distortion );
 
 			S64 must_beat_D = fm_base_distortion + max_distortion_increase;
 
 			// try changing indices to "to" :
-			S64 new_index_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[to], enc_info, allow_new_endpoints, must_beat_D );
+			S64 new_index_D = bc4rd_block_link_distortion( entries[fm].block_link, blocks, infos, &entries[to], enc_info, config, allow_new_endpoints, must_beat_D );
 
 			if ( new_index_D < LARGE_D_S32 )
 			{
@@ -1656,7 +1861,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 		// NOTE: I expected this might really help and it just doesn't, even if I set kMaxCountForRecalc
 		// very high (I tried 128). It does run, and changes endpoints, it just never makes much of
 		// a difference. OTOH it also turns out to be fairly cheap so I'm keeping it.
-		if ( entries[fm].count <= kMaxCountForRecalc )
+		if ( entries[fm].count <= config.max_count_for_recalc )
 		{
 			// "from" blocks are at the start of the newly merged list
 			for ( int bi = entries[fm].block_link; bi != orig_to_head; bi = blocks[bi].link )
@@ -1678,7 +1883,7 @@ static void bc4rd_bottom_up_merge_indices(BlockSurface * bc4_blocks,
 			entries[to].distortion_sum += heap_entry.fm_distortion_onto;
 		}
 
-		RR_DURING_ASSERT( S64 check_distortion_sum = bc4rd_block_link_distortion(entries[to].block_link,blocks,infos,&entries[to],enc_info,false) );
+		RR_DURING_ASSERT( S64 check_distortion_sum = bc4rd_block_link_distortion(entries[to].block_link,blocks,infos,&entries[to],enc_info,config,false) );
 		RR_ASSERT( entries[to].distortion_sum == check_distortion_sum );
 	}
 	}
@@ -1729,14 +1934,28 @@ static void canonicalize_for_constraints(BC4Block * block, const BC4IndexConstra
 	*block = BC4Block::make(block->s.end[0],block->s.end[1],new_inds);
 }
 
+struct BC4SubstCandidate
+{
+	int err;
+	int index;
+
+	bool operator <(const BC4SubstCandidate& x) const
+	{
+		return err < x.err;
+	}
+};
+
 bool BC4_RD(BlockSurface * to_blocks,
 	const BlockSurface * from_blocks,
 	const BlockSurface * baseline_blocks,
 	const BlockSurface * activity_blocks,
 	int lambdai,
-	rrDXTCOptions options)
+	rrDXTCOptions options,
+	const rrDXTCRD_Options & rdopts)
 {
 	SIMPLEPROFILE_SCOPE(bc4rd);
+
+	const BC4Config & config = bc4rd_get_config(rdopts.effort);
 
 	BC4ValueType value_type = determine_value_type( from_blocks->pixelFormat );
 	F32 lambda = lambdai * BC4RD_LAMBDA_SCALE;
@@ -1783,6 +2002,21 @@ bool BC4_RD(BlockSurface * to_blocks,
 
 	bool preserve_extremes = (options & rrDXTCOptions_BC345_PreserveExtremes) != 0;
 
+	const int DIRECT_CANDIDATES = 4; // the most recent few blocks are always tested; keeping this hardcoded for now
+	const int SENTINEL_SAD_ERR = 256*16*16; // larger than largest possible SAD which is 255*16
+
+	vector<BC4SubstCandidate> candidate_heap;
+	candidate_heap.reserve(config.index_heap_size);
+
+	// init candidate heap with dummy values
+	for LOOP(i, config.index_heap_size)
+	{
+		BC4SubstCandidate c;
+		c.err = SENTINEL_SAD_ERR;
+		c.index = 0;
+		candidate_heap.push_back(c);
+	}
+
 	BC4EndpointEncInfo info;
 	BC4_DescribeEncoding(value_type, &info.enc);
 
@@ -1807,15 +2041,17 @@ bool BC4_RD(BlockSurface * to_blocks,
 
 	int nblocks = from_blocks->count;
 	RR_ASSERT( nblocks <= 16*1024 );
+	RR_ASSERT( config.window_size <= 32*1024 ); // no point having a window larger than max # blocks
 
-	const int kWindowSize = 256;
-	RR_COMPILER_ASSERT( kWindowSize <= 32*1024 ); // no point having a window larger than max # blocks
+	vector<BC4WindowEntry> past_block_window;
+	past_block_window.resize(config.window_size);
 
-	BC4WindowEntry past_block_window[kWindowSize];
-	U16 window_inds[kWindowSize];
+	vector<U16> window_inds;
+	window_inds.resize(config.window_size);
+
 	int num_blocks_in_window = 0;
 
-	for LOOP(i,kWindowSize)
+	for LOOPVEC(i,window_inds)
 		window_inds[i] = static_cast<U16>(i);
 
 	// handle BC4 and BC5 with the same code by effectively treating BC5 as a double-size
@@ -1834,6 +2070,8 @@ bool BC4_RD(BlockSurface * to_blocks,
 
 	vector<BC4BlockInfo> infos;
 	infos.reserve(nblocks);
+
+	{SIMPLEPROFILE_SCOPE_N(bc4rd_index_reuse,nblocks);
 
 	for LOOP(bi,nblocks)
 	{
@@ -1908,6 +2146,87 @@ bool BC4_RD(BlockSurface * to_blocks,
 		F32 best_J = bc4rd_J(best_D,bc4rd_R_uncompressed,lambda);;
 		int best_index = -1;
 
+#ifdef ENABLE_INDEX_SAD
+		BC4SADIndices baseline_sad_inds;
+
+		baseline_sad_inds.init_from_reference(blk_info.pixels, chosen.bytes[0], chosen.bytes[1], info);
+
+		for (int pb = DIRECT_CANDIDATES; pb < num_blocks_in_window; ++pb)
+		{
+			const BC4WindowEntry * wnd = &past_block_window[window_inds[pb]];
+
+			// compute both SADs, try the best
+			int sad0 = baseline_sad_inds.sad(wnd->sad_inds[0]);
+			int sad1 = baseline_sad_inds.sad(wnd->sad_inds[1]);
+			int err = RR_MIN(sad0, sad1);
+
+			// improvement over current worst in heap?
+			if (err < candidate_heap[0].err)
+			{
+				// replace worst with our new candidate
+				candidate_heap[0].err = err;
+				candidate_heap[0].index = pb;
+				adjust_heap(candidate_heap.data(), 0, candidate_heap.size32(), stdless<BC4SubstCandidate>());
+			}
+		}
+
+		// actually rate the candidates
+		for LOOP(i,DIRECT_CANDIDATES + candidate_heap.size32())
+		{
+			int pb = i;
+			int j = i - DIRECT_CANDIDATES;
+
+			if (j >= 0)
+			{
+				if (candidate_heap[j].err == SENTINEL_SAD_ERR)
+					continue;
+
+				pb = candidate_heap[j].index;
+				candidate_heap[j].err = SENTINEL_SAD_ERR; // reset for next block
+			}
+			else if (pb >= num_blocks_in_window)
+				continue;
+
+			const BC4WindowEntry * wnd = &past_block_window[window_inds[pb]];
+			U64 packed_inds = wnd->block.read_inds();
+
+			// compute match distance we would have
+			F32 match_R = bc4rd_matched_index_R(bi - wnd->most_recent_bi);
+
+			// in case that matches our original inds, our baseline R was too high!
+			// re-score it.
+			if ( packed_inds == initial_inds )
+			{
+				F32 J = bc4rd_J(blk_info.baseline_D,match_R,lambda);
+				if (J < best_J)
+				{
+					best_J = J;
+					best_D = blk_info.baseline_D;
+					best_index = pb;
+					memcpy(chosen.bytes,original_block.bytes,8);
+				}
+			}
+			else
+			{
+				U8 ep0, ep1;
+				int variant = cached_lls_solve_both(&ep0, &ep1, blk_info, wnd->inds, info);
+				if (variant >= 0)
+				{
+					bc4_decode_with_inds(decoded.values, ep0, ep1, info, wnd->predecoded_inds, variant);
+
+					F32 D = bc4rd_D(decoded,blk_info.pixels,*pActivity);
+					F32 J = bc4rd_J(D,match_R,lambda);
+					if (J < best_J)
+					{
+						best_J = J;
+						best_D = D;
+						best_index = pb;
+						chosen = BC4Block::make(ep0, ep1, packed_inds);;
+					}
+				}
+			}
+		}
+#else // #ifdef ENABLE_INDEX_SAD
 		for LOOP(pb,num_blocks_in_window)
 		{
 			const BC4WindowEntry * wnd = &past_block_window[window_inds[pb]];
@@ -1949,6 +2268,7 @@ bool BC4_RD(BlockSurface * to_blocks,
 				}
 			}
 		}
+#endif
 
 		memcpy(output_bc4,chosen.bytes,8);
 		blk_info.D = best_D;
@@ -1958,10 +2278,10 @@ bool BC4_RD(BlockSurface * to_blocks,
 		// add to window/perform MTF
 		if (best_index == -1)
 		{
-			if (num_blocks_in_window < kWindowSize) // grow window
+			if (num_blocks_in_window < config.window_size) // grow window
 				best_index = num_blocks_in_window++;
 			else // replace LRU block
-				best_index = kWindowSize - 1;
+				best_index = config.window_size - 1;
 
 			// insert new block
 			BC4WindowEntry * entry = &past_block_window[window_inds[best_index]];
@@ -1969,23 +2289,31 @@ bool BC4_RD(BlockSurface * to_blocks,
 
 			U64 inds = chosen.read_inds();
 			bc4_predecode_inds(entry->predecoded_inds, &inds);
+#ifdef ENABLE_INDEX_SAD
+			entry->sad_inds[0].init_from_predecoded(entry->predecoded_inds, 0);
+			entry->sad_inds[1].init_from_predecoded(entry->predecoded_inds, 1);
+#endif
 			init_index_cache(&entry->inds[0], inds, 0, info);
 			init_index_cache(&entry->inds[1], inds, 1, info);
 		}
 
-		// move to front
-		RR_ASSERT(best_index >= 0 && best_index < kWindowSize);
+		// cache update policy
+		//int move_to = 0; // strict move to front/LRU
+		int move_to = best_index / 4; // don't push it all the way to the front (rewards frequency too)
+		RR_ASSERT(best_index >= move_to && best_index < window_inds.size32());
 
 		U16 best_slot = window_inds[best_index];
-		memmove(window_inds + 1, window_inds, best_index * sizeof(window_inds[0]));
-		window_inds[0] = best_slot;
+		memmove(&window_inds[move_to + 1], &window_inds[move_to], (best_index - move_to) * sizeof(window_inds[0]));
+		window_inds[move_to] = best_slot;
 
 		past_block_window[best_slot].most_recent_bi = bi;
 	}
 
+	} // profile scope
+
 	RR_ASSERT(infos.size32() == nblocks);
 
-	bc4rd_bottom_up_merge_indices(to_blocks,activity_blocks,lambda,group_shift,infos,info);
+	bc4rd_bottom_up_merge_indices(to_blocks,activity_blocks,lambda,group_shift,infos,info,config);
 
 	return true;
 }

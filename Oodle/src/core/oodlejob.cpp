@@ -74,8 +74,13 @@ struct OodleJobWaitSet
 	void wait();
 };
 
-void OodleJobWaitSet::init(OodleJobWaitSet * parent_wait_set, U64 * handles, int nhandles, void * user_ptr)
+void OodleJobWaitSet::init(OodleJobWaitSet * parent_wait_set, U64 * handles, int num_raw_handles, void * user_ptr)
 {
+	int nhandles = 0;
+
+	for (int i=0; i < num_raw_handles; ++i)
+		nhandles += (handles[i] != 0 ? 1 : 0);
+
 	m_parent = parent_wait_set;
 	m_user_ptr = user_ptr;
 	m_nhandles = nhandles;
@@ -84,7 +89,18 @@ void OodleJobWaitSet::init(OodleJobWaitSet * parent_wait_set, U64 * handles, int
 	{
 		m_all_handles.resize(nhandles);
 		if ( nhandles == 1 )
-			m_all_handles[0] = handles[0];
+		{
+			m_all_handles[0] = 0;
+			for LOOP(i,num_raw_handles)
+			{
+				if (handles[i] != 0)
+				{
+					m_all_handles[0] = handles[i];
+					break;
+				}
+			}
+			RR_ASSERT(m_all_handles[0] != 0);
+		}
 
 		return;
 	}
@@ -109,8 +125,12 @@ void OodleJobWaitSet::init(OodleJobWaitSet * parent_wait_set, U64 * handles, int
 
 	// copy existing root handles
 	m_all_handles.resize(nhandles + ntree);
-	for LOOP(i,nhandles)
-		m_all_handles[i] = handles[i];
+
+	for (int i=0,j=0; i < num_raw_handles; ++i)
+	{
+		if (handles[i] != 0)
+			m_all_handles[j++] = handles[i];
+	}
 
 	U64 * all_handles = m_all_handles.data();
 	int level_start = 0;

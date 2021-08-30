@@ -147,7 +147,7 @@ MANGLE(oodle_newLZ_tans_a64_kern):
 		rev16	w25, w25								// TANS 4 sym->low byte
 		strb	w12, [x2, #6]							// TANS 0 emit
 		orr		x6, x6, #0x8000000000000000				// advance 0 mark
-		subs	x3, x3, #10								// (nbytesleft -= DECS_PER_ITER) > 0
+		subs	x3, x3, #10								// (nbytesleft -= TANS_DECS_PER_ITER) > 0
 		strb	w15, [x2, #7]							// TANS 1 emit
 		lsrv	x5, x6, x5								// advance 0 consume leftover
 		ccmp	x4, x7, #2, gt							// && in0 <= in1

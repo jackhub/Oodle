@@ -549,7 +549,6 @@ OOFUNC1 void OOFUNC2 OodleLZDecoder_Destroy(OodleLZDecoder * decoder)
 // reads 1 byte at [ptr] :
 extern "C" U64 oodle_x64_wc_probe(const void *ptr);
 
-// NOTE : assumes ptr is a buf of len >= 4
 static void UsageWarning_WriteCombiningCheck(const void *ptr,SINTa len)
 {
 	RR_ASSERT( ! g_Oodle_UsageWarningsDisabled );
@@ -885,9 +884,10 @@ OOFUNC1 rrbool OOFUNC2 OodleLZDecoder_DecodeSome(OodleLZDecoder * decoder,
 		pOut->curQuantumRawLen  = rawBytesToGo;
 		pOut->curQuantumCompLen = rawBytesToGo;
 
-		//*
-		// wait for a full quantum ?
-		if_unlikely ( (compPtr + rawBytesToGo) > (compBuf + compBufAvail) )
+		SINTa compAvail = rrPtrDiff(compBuf + compBufAvail - compPtr);
+
+		// wait for a full quantum
+		if_unlikely ( (SINTa)rawBytesToGo > compAvail )
 		{
 			// not enough compressed bytes, wait for more
 			//  this can cause an infinite loop if we're corrupted
@@ -899,12 +899,6 @@ OOFUNC1 rrbool OOFUNC2 OodleLZDecoder_DecodeSome(OodleLZDecoder * decoder,
 			return true;
 		}
 		int canCopy = rawBytesToGo;
-		/*/
-		// just go with what you have ?
-		int compAvail = compBuf + compBufAvail - compPtr;
-		int canCopy = RR_MIN(compAvail,rawBytesToGo);
-		RR_ASSERT( canCopy >= 0 );
-		/**/
 		
         if_unlikely ( verbose >= OodleLZ_Verbosity_Lots )
         {
@@ -1047,10 +1041,7 @@ OOFUNC1 rrbool OOFUNC2 OodleLZDecoder_DecodeSome(OodleLZDecoder * decoder,
         }
         RR_ASSERT( qh.compLen <= qh_rawLen );
         
-        // @@ wrong kind of ptr end check for fuzz
-		const U8 * compPtrQuantumEnd = compPtr + qh.compLen;
-		
-		if_unlikely ( compPtrQuantumEnd > compPtrEnd )
+		if_unlikely ( qh.compLen > rrPtrDiff( compPtrEnd - compPtr ) )
 		{
 			// not enough compressed bytes to decode
 			
@@ -1073,6 +1064,8 @@ OOFUNC1 rrbool OOFUNC2 OodleLZDecoder_DecodeSome(OodleLZDecoder * decoder,
 			#endif
 		}
         
+		const U8 * compPtrQuantumEnd = compPtr + qh.compLen;
+
 		if_unlikely ( checkCRC && qh.compLen > 0 && header.chunkHasQuantumCRCs )
 		{
 			SIMPLEPROFILE_SCOPE_N(crc,qh.compLen);
@@ -2867,7 +2860,7 @@ OOFUNC1 SINTa OOFUNC2 OodleLZ_Compress(OodleLZ_Compressor compressor,
 
 	if ( ! g_Oodle_UsageWarningsDisabled )
 	{
-		if ( ! OodleLZ_Compressor_IsNewLZFamily(compressor) )
+		if ( ! OodleLZ_Compressor_IsNewLZFamily(compressor) && compressor != OodleLZ_Compressor_None ) // None is not NewLZ, but also not deprecated
 		{
 			static bool s_once1 = true;
 			if ( s_once1 )

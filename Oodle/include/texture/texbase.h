@@ -8,6 +8,7 @@
 #pragma once
 
 #include "oodlebase.h"
+#include "cpux86.h"
 
 //-------------------------------------------------------------------------------------
 
@@ -45,6 +46,9 @@ IDOC typedef enum OodleTex_Err
 
 	OodleTex_Err_NoLicense_Unused = -20,			// unused
 	OodleTex_Err_BufferTooSmall = -21,				// Provided buffer is too small
+	OodleTex_Err_SurfaceTooLarge = -22,				// One of the input surfaces is larger than the maximum supported size (width or height above $OODLETEX_MAX_SURFACE_DIMENSION)
+	OodleTex_Err_BadUniversalTiling = -23,			// OodleTex_RDO_UniversalTiling invalid
+	OodleTex_Err_LayoutAndUniversalTilingIncompatible = -24,	// Both layout and universal tiling specified, they're mutually exclusive.
 
 	OodleTex_Err_Force32 = 0x40000000		// not an actual error!
 } OodleTex_Err;
@@ -56,7 +60,7 @@ IDOC typedef enum OodleTex_Err
 	Non-negative values indicate success, negative values correspond to an $OodleTex_Err value.
 	The utility function $OodleTex_Err_GetName can be used to turn these error codes into strings.
 */
-					  	
+
 PUBTYPEEND
 
 #endif // __OODLE2TEX_H_INCLUDED__
@@ -65,7 +69,32 @@ namespace OO2TEX_NS
 {
 
 // not pub :
-OodleTex_Err OodleTex_Enter();
+inline OodleTex_Err OodleTex_Enter()
+{
+	//	OodleTex_Err test;
+//	test = OodleTex_Err_OK;
+//	S32 t = test;
+
+	// OodleTex_Enter is called by all the public API entry points
+	//	it does any needed one-time inits
+
+  // CPU feature check on x86, doesn't make sense on other targets
+#ifdef __RADX86__
+	// rrCPUx86_detect has its own internal do-once :
+	oo2::rrCPUx86_detect();
+
+	// NOTE we have our own separate copy of rrCPUx86 from Oodle Core!
+	//	our copy is in oo2tex: ; they need their own inits if you use both
+
+	// @@ OodleCore_Enter ?
+
+	// Check for required CPU features
+	if (!oo2::rrCPUx86_feature_present(RRX86_CPU_SSE41))
+		return OodleTex_Err_UnsupportedCPU;
+#endif
+
+	return OodleTex_Err_OK;
+}
 // OodleTex_Enter is called by all the public API entry points
 //	it does any needed one-time inits
 //	eg. rrCPUx86_detect();
@@ -77,11 +106,21 @@ struct FPStateScope
 	U32 saved_mxcsr;
 #endif
 
-	FPStateScope();
-	~FPStateScope();
+	FPStateScope()
+	{
+		saved_mxcsr = _mm_getcsr();
+
+		// Set up our expected FP state: no exception flags set,
+		// all exceptions masked (suppressed), round to nearest,
+		// flush to zero and denormals are zero both off.
+		_mm_setcsr(_MM_MASK_MASK /* all exceptions masked */ | _MM_ROUND_NEAREST | _MM_FLUSH_ZERO_OFF);
+	}
+
+	~FPStateScope()
+	{
+		_mm_setcsr(saved_mxcsr);
+	}
 };
 
 };
-
-
 

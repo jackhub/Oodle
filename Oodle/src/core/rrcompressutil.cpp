@@ -17,6 +17,10 @@
 
 OODLE_NS_START
 
+#include "eastl_heap.h"
+
+//===============================================================================
+
 // 18,446,744,073,709,550,000
 
 /*
@@ -206,12 +210,8 @@ normalize_counts changed from Oodle 2.5.5 to 2.6.0
 when the heap changed (removed EASTL)
 because sort_sym wasn't breaking rank ties explicitly
 
------
-
-
-
 **/
-S32 normalize_counts(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet)
+S32 normalize_counts_v6(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet)
 {
 	RR_ASSERT( to != from );
 	
@@ -401,6 +401,137 @@ S32 normalize_counts(U32 * to, int to_sum_desired, const U32 * from, int from_su
 	return num_non_zero;
 }
 
+S32 normalize_counts_v5(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet)
+{
+	RR_ASSERT( to != from );
+	
+	RR_ASSERT_ALWAYS( from_sum > 0 );
+	
+	RR_DURING_ASSERT( U32 from_sum_check = sum(from,from+alphabet) );
+	RR_ASSERT( (U32)from_sum == from_sum_check );
+	
+	double scale = (double)to_sum_desired / from_sum;
+
+	S32 num_non_zero = 0;	
+	U32 to_sum = 0;
+	for LOOP(i,alphabet)
+	{
+		if ( from[i] == 0 )
+		{
+			to[i] = 0;
+		}
+		else
+		{
+			double from_scaled = from[i] * scale;
+			U32 down = (U32)( from_scaled );
+			
+			to[i] = down + ( from_scaled*from_scaled > down*(down+1) );
+			
+			RR_ASSERT( to[i] > 0 );
+			to_sum += to[i];
+			
+			num_non_zero++;
+		}
+	}
+	
+	S32 correction = to_sum_desired - to_sum;
+	if ( correction != 0 )
+	{
+		RR_STACK_ARRAY(heap,sort_sym,alphabet);
+		SINTa heap_size = 0;
+
+		if ( correction > 0 )
+		{
+			for LOOP(i,alphabet)
+			{
+				if ( from[i] == 0 ) continue;
+				RR_ASSERT( to[i] != 0 );
+
+				float change = logoneplusinv(to[i]) * from[i];
+			
+				heap[heap_size].sym = i;
+				heap[heap_size].rank = change;
+				heap_size++;
+			}
+		}
+		else
+		{
+			RR_ASSERT( correction < 0 );
+			for LOOP(i,alphabet)
+			{
+				if ( from[i] == 0 ) continue;
+				RR_ASSERT( to[i] != 0 );
+				if ( to[i] > 1 )
+				{
+					float change = logoneminusinv(to[i]) * from[i];
+				
+					heap[heap_size].sym = i;
+					heap[heap_size].rank = change;
+					heap_size++;
+				}
+			}
+		}
+			
+		netv5heap::make_heap(heap,heap+heap_size);
+			
+		if ( correction > 0 )
+		{
+			while( correction != 0 )
+			{
+				RR_ASSERT_ALWAYS( heap_size > 0 );
+				netv5heap::pop_heap(heap,heap+heap_size);
+				heap_size--;
+				sort_sym ss = heap[heap_size];
+				
+				int i = ss.sym;
+				RR_ASSERT( from[i] != 0 );
+				
+				to[i] += 1;
+				correction -= 1;
+			
+				float change = logoneplusinv(to[i]) * from[i];
+			
+				heap[heap_size].sym = i;
+				heap[heap_size].rank = change;
+				heap_size++;
+				netv5heap::push_heap(heap,heap+heap_size);
+			}
+		}
+		else
+		{
+			while( correction != 0 )
+			{
+				RR_ASSERT_ALWAYS( heap_size > 0 );
+				netv5heap::pop_heap(heap,heap+heap_size);
+				heap_size--;
+				sort_sym ss = heap[heap_size];
+				
+				int i = ss.sym;
+				RR_ASSERT( from[i] != 0 );
+				
+				RR_ASSERT( to[i] > 1 );
+				to[i] -= 1;
+				correction += 1;
+			
+				if ( to[i] > 1 )
+				{
+					float change = logoneminusinv(to[i]) * from[i];
+				
+					heap[heap_size].sym = i;
+					heap[heap_size].rank = change;
+					heap_size++;
+					netv5heap::push_heap(heap,heap+heap_size);
+				}				
+			}
+		}
+	}
+	
+	RR_ASSERT( RR_NAMESPACE::sum(to,to+alphabet) == (U32)to_sum_desired );
+	
+	return num_non_zero;
+}
+
+//=========================================================
 
 // from is [alphabet] , to is [alphabet+1] , to[0] = 0 and to[alphabet] = sum
 void counts_to_cumfreqs(U32 *to, const U32 *from, int alphabet)

@@ -40,7 +40,7 @@ static RADINLINE int wh_to_num_blocks(int w,int h)
 static RADINLINE SINTa BlockSurface_GetDataSizeBytes(const BlockSurface * bs)
 {
 	RR_ASSERT( bs->blockSizeBytes == rrPixelFormat_Get4x4BlockSizeBytes(bs->pixelFormat) );
-	return bs->count * bs->blockSizeBytes;
+	return bs->count * (SINTa) bs->blockSizeBytes;
 }
 
 static RADINLINE U8 * BlockSurface_Seek(BlockSurface * bs,int bi)
@@ -48,13 +48,13 @@ static RADINLINE U8 * BlockSurface_Seek(BlockSurface * bs,int bi)
 	RR_ASSERT( bi >= 0 && bi < bs->count );
 	RR_ASSERT( bs->blockSizeBytes != 0 );
 	
-	return bs->blocks + bs->blockSizeBytes * bi;
+	return bs->blocks + bs->blockSizeBytes * (SINTa) bi;
 }
 static RADINLINE const U8 * BlockSurface_SeekC(const BlockSurface * bs,int bi)
 {
 	RR_ASSERT( bi >= 0 && bi < bs->count );
 	
-	return bs->blocks + bs->blockSizeBytes * bi;
+	return bs->blocks + bs->blockSizeBytes * (SINTa) bi;
 }
 
 void BlockSurface_Alloc(BlockSurface * bs,int num_blocks, rrPixelFormat format);
@@ -100,6 +100,10 @@ void BlockSurface_Set_RRS_View(rrSurface * surf,const BlockSurface * bs);
 // BlockSurface_Copy_to_RRS : RRS should be allocated first!
 void BlockSurface_Copy_to_RRS_SameFormat(rrSurface* to,int num_surfaces,const BlockSurface * from);
 
+// Same as above, but traverse destination surfaces in row-major tiels or tile_width*tile_height pixels.
+// For universal tiling.
+void BlockSurface_Copy_to_RRS_SameFormat_Tiled(rrSurface* to_surfaces,int num_surfaces,const BlockSurface * from,int tile_width,int tile_height);
+
 void BlockSurface_Copy_to_RRS_SameFormat_Layout(rrSurface* to_surfaces,int num_surfaces,const BlockSurface * from,const OodleTex_Layout * layout);
 
 
@@ -108,8 +112,17 @@ int TotalBlockCount(const rrSurface * from,int num_surfaces);
 // allocs [to] in same format as [from]
 void BlockSurface_AllocCopy_from_RRS(BlockSurface* to,const rrSurface * from,int num_surfaces);
 
+// Same as above, but traverse source surfaces in row-major tiles of tile_width*tile_height pixels.
+// For universal tiling.
+void BlockSurface_AllocCopy_from_RRS_Tiled(BlockSurface* to,const rrSurface * from,int num_surfaces,int tile_width,int tile_height);
+
 // [layout] describes the physical storage order of blocks from (several) [from_surfaces]
 void BlockSurface_AllocCopy_from_RRS_Layout(BlockSurface* to,const rrSurface * from_surfaces,int num_surfaces,const OodleTex_Layout * layout);
+
+// Copies from a block surface that has blocks in universal tiling order to a linear-layout one.
+// Tiling matches the specified set of source rrSurfaces, which are only needed for their
+// dimensions.
+void BlockSurface_Copy_Detile(BlockSurface * to_bs,const BlockSurface * fm_bs,const rrSurface * dim_surfaces,int num_surfaces,int tile_width,int tile_height);
 
 //============================================================
 

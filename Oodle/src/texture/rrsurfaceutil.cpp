@@ -9,6 +9,7 @@
 #include "rrsurfacerowcache.h"
 #include "rrsurfaceblit.h"
 #include "rrsurfacedxtc.h"
+#include "rrsurfacefilters.h"
 #include "templates/rrstl.h"
 #include "rrvecc.h"
 #include "threadprofiler.h"
@@ -217,7 +218,18 @@ rrbool rrSurface_BlitNormalized(rrSurface * to, const rrSurface * from, rrRangeR
 	if ( ! calc_normalize_remap_mul_add(&mult,&add,from->pixelFormat,to->pixelFormat,remap) )
 		return false;
 
-	rrSurface_MultAddF(to,from,mult,add);
+	if ( mult == 1.f && add == 0.f )
+	{
+		// eg. from/to = F32/F16 & remap = None
+
+		// short circuit for non-converting blit
+		//	debug check this should be the same as running the below!
+		return rrSurface_Blit_NonNormalized(to,from);
+	}
+	else
+	{
+		rrSurface_MultAddF(to,from,mult,add);
+	}
 
 	/*
 	// debug check the short circuit blit makes the exact same output :
@@ -633,7 +645,7 @@ void rrSurface_GetMoments(const rrSurface * surf,
 			F32 val = (&(row[x].r))[channel];
 			
 			sum += val;
-			sumSqr += val*val;
+			sumSqr += (F64)val*val;
 			lo = RR_MIN(lo,val);
 			hi = RR_MAX(hi,val);
 		}
@@ -641,9 +653,14 @@ void rrSurface_GetMoments(const rrSurface * surf,
 	
 	sum *= 1.0/(w*h);
 	sumSqr *= 1.0/(w*h);
+
+	double variance = sumSqr - sum*sum;
+	// variance should be >= 0 but can drift negative
+	RR_ASSERT( variance >= -0.0001*sumSqr );
+	if ( variance < 0 ) variance = 0;
 	
 	*pMean = sum;
-	*pVariance = sumSqr - sum*sum;
+	*pVariance = variance;
 	*pMin = lo;
 	*pMax = hi;
 }
@@ -708,7 +725,8 @@ F64 rrSurface_GetSSD(
 	int c2 = info2->channels;
 	
 	int channels = RR_MIN(c1,c2); // ?
-	if ( channels == 0 ) channels = 1;
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
 	
 	if ( ! ( info1->isFloat || info1->isSigned ) &&
 	     ! ( info2->isFloat || info2->isSigned ) &&
@@ -831,7 +849,7 @@ F64 rrSurface_GetSSD(
 		F64 sumSqr = sumR * wf[0] + sumG * wf[1] + sumB * wf[2] + sumA * wf[3];
 		
 		return sumSqr;
-	}	
+	}
 }
 
 F64 rrSurface_GetSAD(
@@ -852,7 +870,8 @@ F64 rrSurface_GetSAD(
 	int c2 = rrPixelFormat_GetInfo(surf2->pixelFormat)->channels;
 	
 	int channels = RR_MIN(c1,c2); // ?
-	if ( channels == 0 ) channels = 1;
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
 	
 	F64 sum = 0;
 	
@@ -943,7 +962,6 @@ F64 rrSurface_GetMSE8BitEquivalent(
 	return scale * scale * mse;
 }
 
-// smpte2084 tone map
 static S32 remap_f16(S32 flt)
 {
 	// positive floats -> positive [0,0x7fff]
@@ -952,9 +970,10 @@ static S32 remap_f16(S32 flt)
 	return ret;
 }
 
-F64 rrSurface_GetF16BitsSSD_RGBA(const rrSurface * surf1, const rrSurface * surf2)
+F64 rrSurface_GetF16BitsSSD_RGBA_Deprecated(const rrSurface * surf1, const rrSurface * surf2)
 {
-	// @@ this is for BC6
+	// DON'T USE ME
+	// 
 	//	we don't want alpha diffs
 	//	could use _3_F16 here
 
@@ -988,9 +1007,11 @@ F64 rrSurface_GetF16BitsSSD_RGBA(const rrSurface * surf1, const rrSurface * surf
 	return static_cast<F64>(sumSqr);
 }
 
-F64 rrSurface_GetF16BitsMSE_RGBA(const rrSurface * surf1, const rrSurface * surf2)
+F64 rrSurface_GetF16BitsMSE_RGBA_Deprecated(const rrSurface * surf1, const rrSurface * surf2)
 {
-	F64 sumSqr = rrSurface_GetF16BitsSSD_RGBA(surf1,surf2);
+	// DON'T USE ME
+
+	F64 sumSqr = rrSurface_GetF16BitsSSD_RGBA_Deprecated(surf1,surf2);
 
 	int w = RR_MIN( surf1->width , surf2->width );
 	int h = RR_MIN( surf1->height, surf2->height );
@@ -1011,8 +1032,11 @@ static F64 mrse_component(F32 x, F32 y)
 	return (denom != 0.0) ? diff * diff / denom : 0.0;
 }
 
-F64 rrSurface_GetMRSE(const rrSurface * surf1, const rrSurface * surf2)
+F64 rrSurface_GetMRSE_Deprecated(const rrSurface * surf1, const rrSurface * surf2)
 {
+	// DON'T USE ME
+	// MRSSE instead
+
 	rrSurfaceRowCache rows1, rows2;
 	rows1.StartReadC(surf1, rrPixelFormat_4_F32, 8);
 	rows2.StartReadC(surf2, rrPixelFormat_4_F32, 8);
@@ -1024,7 +1048,8 @@ F64 rrSurface_GetMRSE(const rrSurface * surf1, const rrSurface * surf2)
 	int c2 = rrPixelFormat_GetInfo(surf2->pixelFormat)->channels;
 
 	int channels = RR_MIN(c1,c2); // ?
-	if ( channels == 0 ) channels = 1;
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
 
 	F64 sum = 0.0;
 
@@ -1107,10 +1132,26 @@ struct MRSSEAccumulator
 
 	F64 finish() const
 	{
+		#if 0
+		// bias denom
+		return num / (denom + RR_FP16_TINIEST_NORMAL);
+		#else
+		// if denom == 0 , numerator must be too
 		return (denom != 0.0) ? num / denom : 0.0;
+		#endif
 	}
 };
 
+/*
+*
+* MRSSE = |x - y|^2 / ( |x|^2 + |y|^2 )
+* 
+* denominator sum of all components
+* so a large value in any one component
+* will mask small differences in other components
+* 
+* 
+*/
 F64 rrSurface_GetMRSSE(const rrSurface * surf1, const rrSurface * surf2)
 {
 	rrSurfaceRowCache rows1, rows2;
@@ -1124,7 +1165,8 @@ F64 rrSurface_GetMRSSE(const rrSurface * surf1, const rrSurface * surf2)
 	int c2 = rrPixelFormat_GetInfo(surf2->pixelFormat)->channels;
 
 	int channels = RR_MIN(c1,c2); // ?
-	if ( channels == 0 ) channels = 1;
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
 
 	F64 sum = 0.0;
 
@@ -1182,6 +1224,133 @@ F64 rrSurface_GetMRSSE(const rrSurface * surf1, const rrSurface * surf2)
 	return sum / ((F64)w * (F64)h);
 }
 
+
+/**
+* rrSurface_GetMRSSE_Neighborhood
+* 
+* same as MRSSE
+* MRSSE = |x - y|^2 / ( |x|^2 + |y|^2 )
+* 
+* but instead of per-pixel magnitude for denominator
+* use the local neighborhood average magnitude
+* 
+* standard MRSSE rates 0.1 -> 0.2 the same as 1000 -> 2000
+* MRSSE_Neighborhood will rate those the same if they are far apart
+*   but not if they are nearby
+* essentially large values mask small differences in the nearby neighborhood
+* 
+*/
+F64 rrSurface_GetMRSSE_Neighborhood(const rrSurface * surf1, const rrSurface * surf2,int max_channels_to_diff /* =3 */)
+{
+	rrSurfaceRowCache rows1, rows2;
+	rows1.StartReadC(surf1, rrPixelFormat_4_F32, 8);
+	rows2.StartReadC(surf2, rrPixelFormat_4_F32, 8);
+
+	int w = RR_MIN(surf1->width,  surf2->width);
+	int h = RR_MIN(surf1->height, surf2->height);
+
+	int c1 = rrPixelFormat_GetInfo(surf1->pixelFormat)->channels;
+	int c2 = rrPixelFormat_GetInfo(surf2->pixelFormat)->channels;
+
+	int channels = RR_MIN(c1,c2); // ?
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
+
+	// max_channels_to_diff = 3 because BC6 doesn't do A
+	//	if source has data in A we'll just see huge diffs
+	RR_ASSERT( max_channels_to_diff > 0 );
+	channels = RR_MIN(channels,max_channels_to_diff);
+
+	// make magnitude_map of (x^2 + y^2) per pixel
+
+	rrSurfaceObj magnitude_map;
+	rrSurface_Alloc(&magnitude_map,w,h,rrPixelFormat_1_F32);
+
+	for LOOP(y,h)
+	{
+		const rrColor4F * row1 = rows1.GetRow_4F(y);
+		const rrColor4F * row2 = rows2.GetRow_4F(y);
+		F32 * mag_row = (F32 *) rrSurface_Seek(&magnitude_map,0,y);
+
+		for LOOP(x,w)
+		{
+			F32 mag =0.f;
+			switch(channels)
+			{
+			case 4:
+				mag += fsquare( row1[x].a ) + fsquare( row2[x].a );
+			case 3:
+				mag += fsquare( row1[x].b ) + fsquare( row2[x].b );
+			case 2:
+				mag += fsquare( row1[x].g ) + fsquare( row2[x].g );
+			case 1:
+				mag += fsquare( row1[x].r ) + fsquare( row2[x].r );
+				break;
+			}
+			mag_row[x] = mag;
+		}
+	}
+
+	// blur magnitude_map to make it local neighborhood map :
+
+	#if 1
+	// @@ ?? TWEAK ME ?
+	//double gaussian_sigma = 2.0;
+	double gaussian_sigma = 4.0;
+
+	// if you don't do this Gaussian blur , result should be exactly the same as standard MRSSE
+	// 	   using per-pixel magnitude
+	rrSurface_MakeGaussianBlurred(&magnitude_map,magnitude_map,gaussian_sigma);
+	#endif
+	
+	//rrSurface_SaveByName(&magnitude_map,"r:\\magmap.exr");
+
+	F64 sum = 0.0;
+
+	for LOOP(y,h)
+	{
+		const rrColor4F * row1 = rows1.GetRow_4F(y);
+		const rrColor4F * row2 = rows2.GetRow_4F(y);
+		const F32 * mag_row = (const F32 *) rrSurface_SeekC(&magnitude_map,0,y);
+
+		for LOOP(x,w)
+		{
+			// N-channel SSD :
+			F64 dsqr =0.f;
+			switch(channels)
+			{
+			case 4:
+				dsqr += fsquare( (F64) row1[x].a - row2[x].a );
+			case 3:
+				dsqr += fsquare( (F64) row1[x].b - row2[x].b );
+			case 2:
+				dsqr += fsquare( (F64) row1[x].g - row2[x].g );
+			case 1:
+				dsqr += fsquare( (F64) row1[x].r - row2[x].r );
+				break;
+			}
+
+			// divide my local neighborhood magnitude denominator :
+			F64 mag = mag_row[x];
+
+			#if 1
+			
+			// this makes quite a big difference on some images :
+			sum += dsqr / (mag + RR_FP16_TINIEST_NORMAL);
+			
+			#else
+
+			// matches old MRSSE exactly :
+			if ( mag != 0.0 )
+				sum += dsqr / mag;
+
+			#endif
+		}
+	}
+	
+	return sum / ((F64)w * h);
+}
+
 F64 rrSurface_GetWeightedMRSSE(const rrSurface * surf1, const rrSurface * surf2, const F32 weights[4])
 {
 	rrSurfaceRowCache rows1, rows2;
@@ -1195,7 +1364,8 @@ F64 rrSurface_GetWeightedMRSSE(const rrSurface * surf1, const rrSurface * surf2,
 	int c2 = rrPixelFormat_GetInfo(surf2->pixelFormat)->channels;
 
 	int channels = RR_MIN(c1,c2); // ?
-	if ( channels == 0 ) channels = 1;
+	RR_ASSERT( channels > 0 );
+	if ( channels == 0 ) return 0.0;
 
 	F64 sum = 0.0;
 
@@ -1255,12 +1425,16 @@ F64 rrSurface_GetWeightedMRSSE(const rrSurface * surf1, const rrSurface * surf2,
 
 // natural log :
 //	(can't use clib log cuz of linux)
-static RADINLINE F32 rrloge(F32 x)
+static RADINLINE F32 fastloge(F32 x)
 {
 	// need to cast to into to use log2tabled_bk
 	// gives us a limit on max input at 2^16 above or below 1.0
-	RR_ASSERT( x < 65536.0 ); // @@ clamp? other?
-	// @@ could use rrlog2_bk_U64 but the implementation of that is shitty at the moment
+	if ( x >= 32768.f || x <= (1.f/32768) )
+	{
+		return (F32) rr_loge(x);
+	}
+
+	// @@ could use rrlog2_bk_U64
 	U32 xi = (U32)(x * 65536.0);
 	S32 t = log2tabled_bk<32>(xi); // not log2tabled_bk_32 that does the table for low values
 	F32 f = t * (1.0f / RR_LOG2TABLE_ONE);
@@ -1279,11 +1453,11 @@ static RADINLINE F32 LinLog(F32 x)
 {
 	if ( x < -1.0f )
 	{
-		return -1.0f - rrloge(-x);
+		return -1.0f - fastloge(-x);
 	}
 	else if ( x > 1.0f )
 	{
-		return 1.0f + rrloge(x);
+		return 1.0f + fastloge(x);
 	}
 	else
 	{
@@ -1312,6 +1486,10 @@ F32 rrSurface_DoLinLog_Exposure_GetMedian(const rrSurface * surf)
 		{
 			const rrColor4F & A = row[x];
 			
+			RR_ASSERT( ! rr_isnaninf_f(A.r) );
+			RR_ASSERT( ! rr_isnaninf_f(A.g) );
+			RR_ASSERT( ! rr_isnaninf_f(A.b) );
+
 			float L = 0.2958f * A.r + 0.6231f * A.g + 0.0811f * A.b;
 			
 			// skip zeros :
@@ -1346,7 +1524,105 @@ F32 rrSurface_DoLinLog_Exposure_GetMedian(const rrSurface * surf)
 	F32 median = vals[ vals.size()/2 ];
 	//F64 median = vals[ vals.size()*3/4 ];
 	
+	#if 0
+	{
+	rrprintf("low (non-zero): %.5f\n", vals[0] );
+	rrprintf("median        : %.5f\n", median );
+	rrprintf("high          : %.5f\n", vals[ vals.size()-1 ] );
+	}
+	#endif
+
 	return median;
+}
+
+rrbool rrSurface_BlitF32toF16_Clamped(rrSurface * to_surf,const rrSurface *fm_surf)
+{
+	rrSurfaceRowCache to_rows;
+	to_rows.Start(to_surf,rrPixelFormat_4_F16,8,RR_SURFACE_ROW_CACHE_WRITE);
+
+	rrSurfaceRowCache fm_rows;
+	fm_rows.Start_ReadC_4F_8(fm_surf);
+	
+	int w = fm_surf->width;
+	int h = fm_surf->height;
+	
+	rrbool out_of_range_detected = false;
+
+	for LOOP(y,h)
+	{
+		U16 * to_row = (U16 *) to_rows.GetRow(y);
+		const float * fm_row = (const float *) fm_rows.GetRow(y);
+
+		for LOOP(x,w*4)
+		{
+			float fm_val = fm_row[x];
+			if ( fm_val < -RR_FP16_MAX || fm_val > RR_FP16_MAX )
+			{
+				out_of_range_detected = true;
+				fm_val = (fm_val < 0) ? -(float)RR_FP16_MAX : (float)RR_FP16_MAX;
+			}
+			rrFP16 fp;
+			rrFP16_SetFloat(&fp,fm_val);
+			to_row[x] = fp.bits;
+		}
+	}
+	
+	return out_of_range_detected;
+}
+
+// rrSurface_Reinhard_Unreal_Tonemap
+// output values are in U8 scale [0,255]
+// and already in sRGB , do NOT gamma correct
+// just Blit_NonNormalized to U8
+void rrSurface_Reinhard_Unreal_Tonemap(rrSurface * surf, F32 median, F32 exposure_multiplier)
+{
+	rrSurfaceRowCache rows;
+	rows.Start_4F_8(surf,RR_SURFACE_ROW_CACHE_READWRITE);
+
+	int w = surf->width;
+	int h = surf->height;
+	
+	/**
+	
+	from:
+
+	float Tonemap_Unreal(float x) {
+		// Unreal 3, Documentation: "Color Grading"
+		// Adapted to be close to Tonemap_ACES, with similar range
+		// Gamma 2.2 correction is baked in, don't use with sRGB conversion!
+		return x / (x + 0.155) * 1.019;
+	}
+
+	x / (x+c) exposure with c = median (scaled by exposure)
+
+	*/
+
+	RR_ASSERT( median != 0.f );
+	F32 exposure = median*2;
+	// median -> 1/3
+	
+	// higher exposure_multiplier = brighter
+	exposure /= exposure_multiplier;
+	
+	for(int y=0;y<h;y++)
+	{
+		rrColor4F * row = rows.GetRow_4F(y);
+
+		for(int x=0;x<w;x++)
+		{
+			rrColor4F & c = row[x];
+			
+			// no A
+			
+			// 260 ~ 255 * 1.019
+
+			c.r = RR_CLAMP( 260.f * c.r / (c.r + exposure ) ,0.f,255.f);
+			c.g = RR_CLAMP( 260.f * c.g / (c.g + exposure ) ,0.f,255.f);
+			c.b = RR_CLAMP( 260.f * c.b / (c.b + exposure ) ,0.f,255.f);
+		}
+	}
+
+	rows.FlushWrite();
 }
 
 // rrSurface_DoLinLog_Exposure outputs surf in unit float scale and not yet gamma corrected
@@ -1363,10 +1639,8 @@ void rrSurface_DoLinLog_Exposure(rrSurface * surf, F32 median, F32 exposure_mult
 	F32 exposure = median*2;
 	
 	// higher exposure_multiplier = brighter
-	//exposure *= exposure_multiplier;
 	exposure /= exposure_multiplier;
 	
-
 	F32 invexposure = 1.0f/exposure;
 
 	invexposure *= 0.5;
@@ -2378,119 +2652,6 @@ void rrSurface_Scale_To_255_Undo(rrSurface * surf, const rrSurface_Scaler * pSca
 }
 
 //=======================================================================================
-
-
-/**
-
-MSDS :
-
-Mean Sum of Derivates Squared
-
-this is a blockiness measure
-hard-coded here to 8x8 blocks
-
----
-
-@@ actually this MSDS as an absolute measure is not that awesome
-it often goes *down* even without unblocking
-
-it would be better if it was relative to the MSDS at block centers or something
-
-**/
-
-F64 rrSurface_GetLumaBlockMSDS(
-				const rrSurface * surf,
-				int xoff, int yoff
-				)
-{
-	rrSurfaceObj surfg;
-
-	rrSurface_Alloc(&surfg,surf->width,surf->height,rrPixelFormat_1_F32);
-
-	rrSurface_MakeGray(&surfg,surf);
-
-	int w = surfg.width  - xoff;
-	int h = surfg.height - yoff;
-		
-	F64 sumSqr = 0;
-	int count = 0;
-	
-	for(int y=0;y<h;y++)
-	{
-		const F32 * row = (const F32 *)(surfg.data + surfg.stride * (y + yoff) + xoff);
-		
-		if ( (y&0x7) == 0 && y  > 0 && y < (h-2) )
-		{
-			// vertical edge from y-1 to y :
-			const F32 * row_p1 = (const F32 *)(surfg.data + surfg.stride * (y+yoff+1) + xoff);
-			const F32 * row_m1 = (const F32 *)(surfg.data + surfg.stride * (y+yoff-1) + xoff);
-			const F32 * row_m2 = (const F32 *)(surfg.data + surfg.stride * (y+yoff-2) + xoff);
-
-			for(int x=0;x<h;x++)
-			{
-				F32 val = row[x];
-				F32 vp1 = row_p1[x];
-				F32 vm1 = row_m1[x];
-				F32 vm2 = row_m2[x];
-				
-				// delta across block edge :
-				F32 d1 = val  - vm1;
-				// average of deltas on each side of block edge :
-				F32 d2 = 0.5f * ( vp1 - val + vm1 - vm2 );
-				// dsqr :
-				sumSqr += (d1 - d2)*(d1 - d2);
-				count++;
-			}
-			
-			// do diagonals :
-			for(int x=8;x<(w-2);x+=8)
-			{
-				// X shape :
-			
-				F32 val = row[x];
-				F32 vp1 = row_p1[x+1];
-				F32 vm1 = row_m1[x-1];
-				F32 vm2 = row_m2[x-2];
-				
-				F32 d1 = val  - vm1;
-				F32 d2 = 0.5f * ( vp1 - val + vm1 - vm2 );
-				sumSqr += (d1 - d2)*(d1 - d2);
-				count++;
-				
-				val = row_m1[x];
-				vp1 = row_m2[x+1];
-				vm1 = row[x-1];
-				vm2 = row_p1[x-2];
-				
-				d1 = val  - vm1;
-				d2 = 0.5f * ( vp1 - val + vm1 - vm2 );
-				sumSqr += (d1 - d2)*(d1 - d2);
-				count++;
-			}
-		}
-		
-		// do horizontal edges for every y :
-		for(int x=8;x<(w-2);x+=8)
-		{
-			F32 val = row[x];
-			F32 vp1 = row[x+1];
-			F32 vm1 = row[x-1];
-			F32 vm2 = row[x-2];
-			
-			F32 d1 = val  - vm1;
-			F32 d2 = 0.5f * ( vp1 - val + vm1 - vm2 );
-			sumSqr += (d1 - d2)*(d1 - d2);
-			count++;
-		}
-		
-		// @@ should do 4 diagonal terms as well really
-	}
-	
-	if ( count > 0 )
-		sumSqr /= count;
-	
-	return sumSqr;
-}
 
 void rrSurface_AllocCopy_MirrorExtended(rrSurface * to,const rrSurface *from,rrPixelFormat toFmt,int toW,int toH)
 {

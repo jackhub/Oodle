@@ -91,7 +91,7 @@ U8 * rrPixelFormat_Seek(rrPixelFormat format, U8 * ptr, SINTa stride, int x,int 
 		
 		ptr += by * stride;
 		
-		ptr += bx * (info->bytesPerBlock);
+		ptr += bx * (SINTa) (info->bytesPerBlock);
 		
 		return ptr;
 	}
@@ -102,7 +102,7 @@ U8 * rrPixelFormat_Seek(rrPixelFormat format, U8 * ptr, SINTa stride, int x,int 
 		RR_ASSERT( info->bytesPerPixel != 0 );
 		
 		ptr += y * stride;
-		ptr += x * (info->bytesPerPixel);
+		ptr += x * (SINTa) (info->bytesPerPixel);
 	
 		return ptr;
 	}
@@ -120,7 +120,7 @@ SINTa	rrPixelFormat_MakeStride_Minimum(rrPixelFormat format, int w)
 	//RR_ASSERT( w == rrAlignUp( w, info->blockSize ) );
 		
 	int blocks = w / info->blockSize;
-	SINTa bytes = blocks * info->bytesPerBlock;
+	SINTa bytes = blocks * (SINTa) info->bytesPerBlock;
 	
 	return bytes;
 }
@@ -419,7 +419,22 @@ int rrPixelFormat_GetNormalizedScale(rrPixelFormat fmt)
 static void Colors4ItoF_Linear_Multi( rrColor4F * dest, const rrColor4I * src, S32 count )
 {
 #ifdef __RADSSE2__
-	for LOOP(i,count)
+	int i;
+
+	// groups of 4
+	for (i = 0; i < (count & ~3); i += 4)
+	{
+		Vec128 col_int0 = load128u(&src[i + 0].r);
+		Vec128 col_int1 = load128u(&src[i + 1].r);
+		Vec128 col_int2 = load128u(&src[i + 2].r);
+		Vec128 col_int3 = load128u(&src[i + 3].r);
+		VecF32x4::from_int32(col_int0).storeu(&dest[i + 0].r);
+		VecF32x4::from_int32(col_int1).storeu(&dest[i + 1].r);
+		VecF32x4::from_int32(col_int2).storeu(&dest[i + 2].r);
+		VecF32x4::from_int32(col_int3).storeu(&dest[i + 3].r);
+	}
+
+	for (; i < count; ++i)
 	{
 		Vec128 col_int = load128u(&src[i].r);
 		VecF32x4::from_int32(col_int).storeu(&dest[i].r);
@@ -429,6 +444,125 @@ static void Colors4ItoF_Linear_Multi( rrColor4F * dest, const rrColor4I * src, S
 		rrColor4_I_to_F_Linear(&dest[i],&src[i]);
 #endif
 }
+
+#ifdef __RADSSE2__
+
+static inline void rrPixelFormat_GetColors4I_1U8(rrColor4I * color, S32 count, const U8 * ptr)
+{
+	const U8 * from = ptr;
+	Vec128 constant_a = _mm_setr_epi32(0, 0, 0, 0xff);
+	Vec128 constant_a_4x = _mm_setr_epi32(0, 0, 0, -1);
+	Vec128 mask_8b = _mm_set1_epi32(0xff);
+	int i;
+
+	// groups of 4
+	for (i = 0; i < (count & ~3); i += 4)
+	{
+		Vec128 v = load32u(from + i); // load 4 pixels worth
+		v = shuffle32<0,0,0,3>(v); // broadcast value to RGB (leave A alone)
+		v = _mm_or_si128(v, constant_a_4x); // fill alpha channel with 0xff
+
+		// now each lane holds 4 pixels worth of data, store them all
+		store128u(color + i + 0, _mm_and_si128(v, mask_8b));
+		store128u(color + i + 1, _mm_and_si128(_mm_srli_epi32(v, 8), mask_8b));
+		store128u(color + i + 2, _mm_and_si128(_mm_srli_epi32(v, 16), mask_8b));
+		store128u(color + i + 3, _mm_srli_epi32(v, 24));
+	}
+
+	// tail
+	for (; i < count; ++i)
+	{
+		Vec128 v = _mm_cvtsi32_si128(from[i]);
+		v = shuffle32<0,0,0,3>(v); // broadcast value to RGB
+		v = _mm_or_si128(v, constant_a);
+		store128u(color + i, v);
+	}
+}
+
+static inline void rrPixelFormat_GetColors4I_2U8(rrColor4I * color, S32 count, const U8 * ptr)
+{
+	const U16 * from = (const U16 *)ptr;
+	Vec128 constant_a = _mm_setr_epi32(0, 0, 0, 0xff);
+	Vec128 constant_a_2x = _mm_setr_epi32(0, 0xff, 0, 0xff);
+	int i;
+
+	// groups of 2
+	for (i = 0; i < (count & ~1); i += 2)
+	{
+		Vec128 v = load32u(from + i); // load 2 pixels worth
+
+		// unpack to 32-bit lanes
+		v = zext8to16_lo(v);
+		v = zext16to32_lo(v);
+
+		// store the halves with constant b/a inserted
+		store128u(color + i + 0, _mm_unpacklo_epi64(v, constant_a_2x));
+		store128u(color + i + 1, _mm_unpackhi_epi64(v, constant_a_2x));
+	}
+
+	// tail element if any
+	if (i < count)
+	{
+		// load 16-bit value (two channels)
+		Vec128 v = _mm_cvtsi32_si128(from[i]);
+
+		// unpack to 32-bit lanes
+		v = zext8to16_lo(v);
+		v = zext16to32_lo(v);
+
+		// add in constant a
+		v = _mm_or_si128(v, constant_a);
+		store128u(color + i, v);
+	}
+}
+
+static inline void rrPixelFormat_GetColors4I_1U16(rrColor4I * color, S32 count, const U8 * ptr)
+{
+	const U16 * from = (const U16 *)ptr;
+	Vec128 constant_a = _mm_setr_epi32(0, 0, 0, 0xffff);
+	Vec128 mask_r = _mm_setr_epi32(0xffff, 0, 0, 0);
+	int i;
+
+	// NOTE: unlike U8, our standard conversion here does not broadcast r, just expands to (r,0,0,1)
+
+	// groups of 2
+	for (i = 0; i < (count & ~1); i += 2)
+	{
+		Vec128 v = load32u(from + i); // load 2 pixels worth
+
+		// put the two result vectors in place using shifts+masking, then insert the constant a
+		store128u(color + i + 0, _mm_or_si128(_mm_and_si128(v, mask_r), constant_a));
+		store128u(color + i + 1, _mm_or_si128(_mm_srli_epi32(v, 16), constant_a));
+	}
+
+	// tail element if any
+	if (i < count)
+	{
+		Vec128 v = _mm_cvtsi32_si128(from[i]);
+		v = _mm_or_si128(v, constant_a);
+		store128u(color + i, v);
+	}
+}
+
+static inline void rrPixelFormat_GetColors4I_2U16(rrColor4I * color, S32 count, const U8 * ptr)
+{
+	const U32 * from = (const U32 *)ptr;
+	Vec128 constant_a = _mm_setr_epi32(0, 0, 0, 0xffff);
+	for LOOP(i,count)
+	{
+		// load 32-bit value (two channels)
+		Vec128 v = _mm_cvtsi32_si128(from[i]);
+
+		// unpack to 32-bit lanes
+		v = zext16to32_lo(v);
+
+		// insert constant a
+		v = _mm_or_si128(v, constant_a);
+		store128u(color + i, v);
+	}
+}
+
+#endif
 
 void rrPixelFormat_GetColors4I( const U8 * ptr, rrPixelFormat format, rrColor4I * color, S32 count )
 {
@@ -444,8 +578,13 @@ void rrPixelFormat_GetColors4I( const U8 * ptr, rrPixelFormat format, rrColor4I 
 
 	switch(format)
 	{
+#ifdef __RADSSE2__
+	case rrPixelFormat_1_U8:		rrPixelFormat_GetColors4I_1U8(color, count, ptr); break;
+	case rrPixelFormat_R8G8:		rrPixelFormat_GetColors4I_2U8(color, count, ptr); break;
+#else
 	case rrPixelFormat_1_U8:		STANDARD_COPY_LOOP(U8, from[i], from[i], from[i], 0xFF); break;
 	case rrPixelFormat_R8G8:		STANDARD_COPY_LOOP(U8, from[i*2+0], from[i*2+1], 0, 0xFF); break;
+#endif
 	case rrPixelFormat_B8G8R8:		STANDARD_COPY_LOOP(U8, from[i*3+2], from[i*3+1], from[i*3+0], 0xFF); break;
 	case rrPixelFormat_B8G8R8x8:	STANDARD_COPY_LOOP(U8, from[i*4+2], from[i*4+1], from[i*4+0], 0xFF); break;
 	case rrPixelFormat_R8G8B8:		STANDARD_COPY_LOOP(U8, from[i*3+0], from[i*3+1], from[i*3+2], 0xFF); break;
@@ -453,8 +592,13 @@ void rrPixelFormat_GetColors4I( const U8 * ptr, rrPixelFormat format, rrColor4I 
 	case rrPixelFormat_B8G8R8A8:	STANDARD_COPY_LOOP(U8, from[i*4+2], from[i*4+1], from[i*4+0], from[i*4+3]); break;
 	case rrPixelFormat_R8G8B8A8:	STANDARD_COPY_LOOP(U8, from[i*4+0], from[i*4+1], from[i*4+2], from[i*4+3]); break;
 
+#ifdef __RADSSE2__
+	case rrPixelFormat_1_U16:		rrPixelFormat_GetColors4I_1U16(color, count, ptr); break;
+	case rrPixelFormat_2_U16:		rrPixelFormat_GetColors4I_2U16(color, count, ptr); break;
+#else
 	case rrPixelFormat_1_U16:		STANDARD_COPY_LOOP(U16, from[i], 0, 0, 0xFFFF); break;
 	case rrPixelFormat_2_U16:		STANDARD_COPY_LOOP(U16, from[i*2+0], from[i*2+1], 0, 0xFFFF); break;
+#endif
 	case rrPixelFormat_3_U16:		STANDARD_COPY_LOOP(U16, from[i*3+0], from[i*3+1], from[i*3+2], 0xFFFF); break;
 	case rrPixelFormat_4_U16:		STANDARD_COPY_LOOP(U16, from[i*4+0], from[i*4+1], from[i*4+2], from[i*4+3]); break;
 
@@ -729,19 +873,43 @@ void rrPixelFormat_GetColors4F( const U8 * ptr, rrPixelFormat format, rrColor4F 
 	case rrPixelFormat_1_F32:
 		{
 		const F32 * from = (const F32 *)ptr;
+#ifdef __RADSSE2__
+		// NOTE(fg): could save a bit more work with more unroll but this is simplest
+		VecF32x4 one_in_alpha(0.0f, 0.0f, 0.0f, 1.0f);
 		for LOOP(i,count)
 		{
-			color[i].r = from[i];
-			color[i].g = from[i];
-			color[i].b = from[i];
+			VecF32x4 v = VecF32x4::load_scalar(&from[i]);
+			v = v.shuf<0,0,0,3>(); // broadcast load value to first 3 lanes, keep 0 in 4th lane
+			v |= one_in_alpha; // insert a=1 constant
+			v.storeu(&color[i].r);
+		}
+#else
+		for LOOP(i,count)
+		{
+			F32 v = from[i];
+			color[i].r = v;
+			color[i].g = v;
+			color[i].b = v;
 			color[i].a = 1.f;
 		}
+#endif
 		}
 		break;
 		
 	case rrPixelFormat_2_F32:
 		{
 		const F32 * from = (const F32 *)ptr;
+#ifdef __RADSSE2__
+		// NOTE(fg); could save a bit of work here by unrolling 2x and doing single
+		// 4-lane wide loads then shuffle to form two pixels worth of results, but this is not bad
+		VecF32x4 const_ba(0.0f, 0.0f, 0.0f, 1.0f); // 0.0f / 1.0f constants for b/a channels
+		for LOOP(i,count)
+		{
+			VecF32x4 v = VecF32x4::load_pair(from + i*2);
+			v |= const_ba; // insert a=1 constant (b=0 we already have)
+			v.storeu(&color[i].r);
+		}
+#else
 		for LOOP(i,count)
 		{
 			color[i].r = from[i*2+0];
@@ -749,6 +917,7 @@ void rrPixelFormat_GetColors4F( const U8 * ptr, rrPixelFormat format, rrColor4F 
 			color[i].b = 0.f;
 			color[i].a = 1.f;
 		}
+#endif
 		}
 		break;
 		
@@ -766,11 +935,7 @@ void rrPixelFormat_GetColors4F( const U8 * ptr, rrPixelFormat format, rrColor4F 
 		break;
 		
 	case rrPixelFormat_4_F32:
-		{
-		const rrColor4F * from = (const rrColor4F *)ptr;
-		for LOOP(i,count)
-			color[i] = from[i];
-		}
+		memcpy(color, ptr, count * sizeof(rrColor4F));
 		break;
 	
 	case rrPixelFormat_RGBE_8888:
@@ -876,9 +1041,7 @@ void rrPixelFormat_PutColors4F( U8 * ptr, rrPixelFormat format, const rrColor4F 
 		
 	case rrPixelFormat_4_F32:
 		{
-		rrColor4F * to = (rrColor4F *)ptr;
-		for LOOP(i,count)
-			to[i] = color[i];
+		memcpy(ptr,color,count * sizeof(rrColor4F));
 		}
 		break;
 	

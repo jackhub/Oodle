@@ -17,7 +17,8 @@
 #include "templates/rralgorithm.h"
 #include "templates/rrvector_s.h"
 
-//#include "rrsimpleprof.h"
+#include "rrsimpleprof.h"
+//#include "rrsimpleprofstub.h"
 
 //===============================================================================
 
@@ -207,6 +208,7 @@ static inline const rrColor32BGRA Vec3iToColor_div_f_round(const rrVec3i & vec, 
 //	fills pData if true is returned
 bool rrCompressDXT1_Startup(rrCompressDXT1_Startup_Data * pData, rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXT1PaletteMode mode)
 {
+	SIMPLEPROFILE_SCOPE(BC1_Startup);
 	rrVec3i avg(0,0,0);
 	
 	rrColor32BGRA loC;
@@ -549,7 +551,7 @@ bool rrCompressDXT1_2Means(const rrCompressDXT1_Startup_Data & data,rrDXT1Block 
 
 bool rrCompressDXT1_4Means(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXT1PaletteMode mode, bool use_pca)
 {
-//	SIMPLEPROFILE_SCOPE(rrCompressDXT1_4Means);
+	SIMPLEPROFILE_SCOPE(BC1_4Means);
 		
 	rrVec3i avg = data.avg;	
 	rrVec3f pca;
@@ -583,8 +585,33 @@ bool rrCompressDXT1_4Means(const rrCompressDXT1_Startup_Data & data,rrDXT1Block 
 			// technically I could just normalize at the end, but the floats get blown out of range
 			if ( ! NormalizeSafe(&pca) )
 			{
-				Compress_TwoColorBest(pBlock,pError,colors,mode,data.loC,data.hiC);
-				return true;	
+				// NOTE(fg): this is bad:
+				// loC and hiC are bbox corners which can be very far from all colors in the block
+				// and it's certainly no reason to bail out of this pass just because we got unlucky with the seed vec
+				//Compress_TwoColorBest(pBlock,pError,colors,mode,data.loC,data.hiC);
+				//return true;
+
+				// Instead, pick the longest diagonal between pixels in the block the average
+				// color; this is guaranteed to at least be something that makes sense for the block
+				// (we handled single-color blocks during init) and is symmetric.
+				//
+				// This doesn't need to be particularly fast, it's rare, just try to not face-plant
+				pca = rrVec3f(1.f,1.f,1.f);
+				F32 longest_len2 = 0.0;
+
+				for(int i=1;i<16;i++)
+				{
+					rrVec3f colori = ColorToVec3f(colors.colors[i]);
+					rrVec3f axis = colori - avgF;
+					F32 len2 = (F32)LengthSqr(axis);
+					if (len2 > longest_len2)
+					{
+						pca = axis;
+						longest_len2 = len2;
+					}
+				}
+
+				pca = Normalize(pca);
 			}
 		}
 	}
@@ -1462,8 +1489,6 @@ int make_accum_clusters(ColorAccum color_sum_to_end[17], const rrVec3f * colors,
 		
 bool rrCompressDXT1_PCA_Squish_All_Clusters_4C(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXT1PaletteMode mode)
 {
-	//SIMPLEPROFILE_SCOPE(rrCompressDXT1_PCA_Squish_All_Clusters);
-		
 	rrVec3f avgF = Vec3i_to_Vec3f(data.avg);
 	
 	rrVec3f colorsF[16];
@@ -1751,6 +1776,8 @@ bool rrCompressDXT1_PCA_Squish_All_Clusters_3C(rrDXT1Block * pBlock,U32 * pError
 
 bool rrCompressDXT1_PCA_Squish_All_Clusters(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXT1PaletteMode mode)
 {
+	SIMPLEPROFILE_SCOPE(BC1_PCA_Squish_All_Clusters);
+
 	if ( ! rrCompressDXT1_PCA_Squish_All_Clusters_4C(data,pBlock,pError,colors,mode) )
 		return false;
 	
@@ -2314,6 +2341,8 @@ void rrCompressDXT1_2(rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 &
 // 3 = VerySlow + Reference
 void rrCompressDXT1_3(rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXTCOptions options, rrDXT1PaletteMode mode, rrDXTCLevel level)
 {
+	SIMPLEPROFILE_SCOPE(BC1_Level3);
+
 	*pError = RR_DXTC_INIT_ERROR;
 	
 	rrCompressDXT1_Startup_Data data;
@@ -2321,7 +2350,6 @@ void rrCompressDXT1_3(rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 &
 	{
 		// linear_ramp1.BMP still wants Optimize
 		//	nobody else cares
-
 		DXT1_GreedyOptimizeBlock(data,pBlock,pError,colors,mode,true);
 		return;
 	}
@@ -2447,90 +2475,33 @@ void rrCompressDXT1_3(rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 &
 
 #define NUM_WIGGLES	(6)	// number of non-null wiggles
 
-/*
-static const int c_wiggle_channel[8] = { 2,2, 1,1, 0,0, 0,0 };
-static const int c_wiggle_delta[8] = { 1,-1, 1,-1, 1,-1, 0,0 };
-static const int c_wiggle_channel_max[8] = { 31,31, 63,63, 31,31, 255,255 };
-	
-static RADFORCEINLINE rrColor32BGRA Wiggle(const rrColor32BGRA & color,int how)
-{
-	rrColor32BGRA ret = color;
-	U8 * pc = &ret.u.b;
-	pc += c_wiggle_channel[how];
-	int c = *pc;
-	c += c_wiggle_delta[how];
-	c = RR_CLAMP(c,0, c_wiggle_channel_max[how] );
-	*pc = (U8) c;
-
-	return ret;
-} 
-
-/*/
-
-// Wiggle on the color dword without byte accesses :
-
 // rrColor32BGRA is ARGB in shifts
-//static const U32 c_wiggledw_mask[8]  = { 31<<16,31<<16, 63<<8,63<<8, 31,31, 0,0 };
-// shifting a negative signed value is undefined
-static const S32 c_wiggledw_delta[8] = { 1<<16,-1<<16, 1<<8,-1<<8, 1,-1, 0,0 };
-// let's just turn off this warning
-// -Wshift-negative-value -Wno-shift-negative-value
-//static const S32 c_wiggledw_delta[8] = { 1<<16,(S32)((~0U)<<16), 1<<8,(S32)((~0U)<<8), 1,-1, 0,0 };
-	
+static const S32 c_wiggledw_delta[8] = { 1<<16,-(1<<16), 1<<8,-(1<<8), 1,-1, 0,0 };
+
 static RADFORCEINLINE rrColor32BGRA Wiggle(const rrColor32BGRA & color,int how)
 {
 	U32 dw;
 	rrColor32BGRA ret;
-	/*
-	U32 mask = c_wiggledw_mask[how];
-	dw = color.dw;
-	S32 c = dw & mask;
-	dw ^= c;
-	c += c_wiggledw_delta[how];
-	c = RR_CLAMP(c,0,(S32)mask);
-	U32 out_dw = dw | c;
-	*/
-	
-	//rrColor32BGRA ref = Wiggle_old(color,how);
-	//RR_ASSERT( ret.dw == ref.dw );
 	
 	dw = color.dw;
 	RR_ASSERT( (dw & 0xFF1F3F1F) == dw );
 	dw += (U32)c_wiggledw_delta[how];
-	// if we went out of allowed range on this color
-	//	some bits outside of 0x1F3F1F are on
+	// if we went out of allowed range on this color,
+	// some bits outside of 0x1F3F1F are on; instead
+	// of clamping, we can just return the original
+	// value (which works out to the same thing)
 	ret.dw = (dw & (~0xFF1F3F1F)) ? color.dw : dw;
-	
-	//RR_ASSERT( ret.dw == out_dw );
 	
 	return ret;
 }
 
-/**/
-
-/*
-static RADFORCEINLINE rrColor565Bits Wiggle(rrColor565Bits color,int how)
-{
-	switch(how)
-	{
-	case 0: color.u.r = RR_MIN(color.u.r+1, 31); return color;
-	case 1: color.u.r = RR_MAX(color.u.r-1,  0); return color;
-	case 2: color.u.g = RR_MIN(color.u.g+1, 63); return color;
-	case 3: color.u.g = RR_MAX(color.u.g-1,  0); return color;
-	case 4: color.u.b = RR_MIN(color.u.b+1, 31); return color;
-	case 5: color.u.b = RR_MAX(color.u.b-1,  0); return color;
-
-	// Annealing uses some NULL Wiggles so that we can consider cases where one end is fixed and only one moves :
-	case 6:
-	case 7: return color;
-	RR_NO_DEFAULT_CASE
-	}
-} 
-*/
-
 void DXT1_GreedyOptimizeBlock(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, rrDXT1PaletteMode mode, bool do_joint_optimization)
 {
-//	SIMPLEPROFILE_SCOPE(DXT1_GreedyOptimizeBlock);
+	// If the error is already 0, nothing to do
+	if ( *pError == 0 )
+		return;
+
+	SIMPLEPROFILE_SCOPE(BC1_GreedyOpt);
 	
 	// Greedy optimization - do after Annealing
 
@@ -2762,6 +2733,8 @@ static void SetupAnnealTemp()
 void DXT1_AnnealBlock(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors, 
 	rrDXT1PaletteMode mode)
 {
+	SIMPLEPROFILE_SCOPE(BC1_Anneal);
+
 	rrColor32BGRA cur0 = rrColor565Bits_UnPack(pBlock->c0);
 	rrColor32BGRA cur1 = rrColor565Bits_UnPack(pBlock->c1);
 	U32 curIndices = pBlock->indices;
@@ -2836,6 +2809,48 @@ void DXT1_AnnealBlock(const rrCompressDXT1_Startup_Data & data,rrDXT1Block * pBl
 
 //=========================================================================
 
+// Quantize straight to packed RGB565; the previous approach where we
+// first quantized results to 8-bit temps and from there to 565 rounds
+// twice.
+static inline rrColor565Bits Vec3fToQuantized565_RN(const rrVec3f & vec)
+{
+	const F32 scaleRB = 31.0f / 255.0f;
+	const F32 scaleG = 63.0f / 255.0f;
+
+	rrColor565Bits ret = {};
+	ret.u.b = RR_CLAMP( rr_froundint( scaleRB * vec.x ), 0, 31 );
+	ret.u.g = RR_CLAMP( rr_froundint( scaleG  * vec.y ), 0, 63 );
+	ret.u.r = RR_CLAMP( rr_froundint( scaleRB * vec.z ), 0, 31 );
+	return ret;
+}
+
+// Truncating and clampign at max-1 so we can bump values by +1
+// without having to worry about overflows later.
+static inline void Vec3fToQuantized565_RD_MaxMinus1(U8 dest[3], const rrVec3f & vec)
+{
+	const F32 scaleRB = 31.0f / 255.0f;
+	const F32 scaleG = 63.0f / 255.0f;
+
+	dest[0] = static_cast<U8>(RR_CLAMP( (int) ( scaleRB * vec.x ), 0, 30 ));
+	dest[1] = static_cast<U8>(RR_CLAMP( (int) ( scaleG  * vec.y ), 0, 62 ));
+	dest[2] = static_cast<U8>(RR_CLAMP( (int) ( scaleRB * vec.z ), 0, 30 ));
+}
+
+static rrColor565Bits PackColor(const U8 vals[3])
+{
+	RR_ASSERT(vals[0] < 32);
+	RR_ASSERT(vals[1] < 64);
+	RR_ASSERT(vals[2] < 32);
+
+	rrColor565Bits col = {};
+	col.u.b = vals[0];
+	col.u.g = vals[1];
+	col.u.r = vals[2];
+	return col;
+}
+
+#define USE_NEW_QUANT 0
+
 /*
 
 OptimizeEndPointsFromIndices :
@@ -2845,12 +2860,9 @@ Simon's lsqr to optimize end points from indices
 I'm not sure I'm doing it right for the 3 color case, can you just use a 0,0 weight like that ?
 	
 */
-		
+
 bool DXT1_OptimizeEndPointsFromIndices_Raw(U32 * pEndPoints, U32 * pIndices, const U32 indices, bool fourc, const rrColorBlock4x4 & colors)
 {
-//	static const rrVec2f c_fourc_weights[4]  = { rrVec2f(1.f,0), rrVec2f(0,1.f), rrVec2f(2.f/3,1.f/3) , rrVec2f(1.f/3,2.f/3) };
-//	static const rrVec2f c_threec_weights[4] = { rrVec2f(1.f,0), rrVec2f(0,1.f), rrVec2f(1.f/2,1.f/2) , rrVec2f(0,0) };
-	
 	// can just scale up weights to make them ints
 	// this is meh for optimization but it is nice to get "det" in an int to be able to check == 0 exactly
 	static const int c_fourc_weights[8]  = {3,0,2,1,  0,3,1,2};
@@ -2895,6 +2907,50 @@ bool DXT1_OptimizeEndPointsFromIndices_Raw(U32 * pEndPoints, U32 * pIndices, con
 	rrVec3f vA = float(  BB * invDet) * AX + float(- AB * invDet ) * BX;
 	rrVec3f vB = float(- AB * invDet) * AX + float(  AA * invDet ) * BX;
 	
+#if USE_NEW_QUANT == 2
+	U8 rdA[3], rdB[3];
+	U8 bestA[3] = {}, bestB[3] = {};
+
+	// rounded-down A, B, clamped to actual max minus 1 so we can safely add 1
+	Vec3fToQuantized565_RD_MaxMinus1(rdA, vA);
+	Vec3fToQuantized565_RD_MaxMinus1(rdB, vB);
+
+	// For each of the 3 color channels
+	for(int ch=0;ch<3;ch++)
+	{
+		int mult = (ch == 1) ? 65 : 132; // .4 fixed-point multipliers for the bit expand
+		float best = 0.0f;
+
+		// Try all 4 rounding combinations
+		for (int i=0;i<4;i++)
+		{
+			// Actual endpoint values
+			int x0i = rdA[ch] + (i&1);
+			int x1i = rdB[ch] + (i>>1);
+
+			// Expanded with bit-replicate, and converted to float
+			float x0 = (float)((x0i * mult) >> 4);
+			float x1 = (float)((x1i * mult) >> 4);
+
+			// Residual term is
+			//   x^T (A^T A) x - 2 x^T (A^T b) + b^T b
+			// can drop the b^T b portion since it's a constant, doesn't change the min
+			float res = AA * (x0*x0) + BB * (x1*x1) + 2.0f * (AB * x0*x1 - x0*AX[ch] - x1*BX[ch]);
+			if (i == 0 || res < best)
+			{
+				best = res;
+				bestA[ch] = static_cast<U8>(x0i);
+				bestB[ch] = static_cast<U8>(x1i);
+			}
+		}
+	}
+
+	rrColor565Bits qA = PackColor(bestA);
+	rrColor565Bits qB = PackColor(bestB);
+#elif USE_NEW_QUANT == 1
+	rrColor565Bits qA = Vec3fToQuantized565_RN(vA);
+	rrColor565Bits qB = Vec3fToQuantized565_RN(vB);
+#else // USE_NEW_QUANT
 	rrColor32BGRA cA = Vec3fToColorClamp(vA);
 	rrColor565Bits qA = Quantize(cA);
 	
@@ -2919,7 +2975,7 @@ bool DXT1_OptimizeEndPointsFromIndices_Raw(U32 * pEndPoints, U32 * pIndices, con
 	//vB.y += vA.y - cAq.u.g;
 	//vB.z += vA.z - cAq.u.r;
 	#endif
-	
+
 	rrColor32BGRA cB = Vec3fToColorClamp(vB);
 	rrColor565Bits qB = Quantize(cB);
 	
@@ -2946,6 +3002,7 @@ bool DXT1_OptimizeEndPointsFromIndices_Raw(U32 * pEndPoints, U32 * pIndices, con
 	//	no flip can save them and we're screwed
 	
 	//Make4ColorOrder(qA,qB);
+#endif // USE_NEW_QUANT
 	
 	#if 1
 	
@@ -3564,7 +3621,7 @@ bool DXT1_OptimizeEndPointsFromIndices_Inherit_NoReindex(rrDXT1Block * pBlock,U3
 
 void DXT1_OptimizeEndPointsFromIndicesIterative(rrDXT1Block * pBlock,U32 * pError, const rrColorBlock4x4 & colors,rrDXT1PaletteMode mode) //, rrDXTCOptions options)
 {
-//	SIMPLEPROFILE_SCOPE(DXT1_OptimizeEndPointsFromIndicesIterative);
+	SIMPLEPROFILE_SCOPE(BC1_EndpointsFromIndsIter);
 	
 	for(;;)
 	{

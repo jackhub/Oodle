@@ -112,6 +112,7 @@ leaf_func_with_prologue oodle_newLZ_huff6_x64_zen2_kern
         movbe           rcx, [%4]               ; next1
         or              rcx, rdi                ; next1 | marker
         shrx            %3, rcx, %3             ; consume partial1
+        prefetcht0      [%4 - 128]              ; prefetch backwards-moving stream
 
         mov             rcx, rdi                ; marker
         or              rcx, [%6]               ; next2 | marker

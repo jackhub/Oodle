@@ -50,7 +50,7 @@ static RADINLINE SINTa newLZ_get_array(U8ptr * ptr_to, const U8 * from, const U8
 	// ptr_to == NULL us used by get_arraylens to share code
 
 	// can I get 2 bytes? :
-	REQUIRE_FUZZ_RETURN( from_ptr+2 <= from_end , -1 );
+	REQUIRE_FUZZ_RETURN( 2 <= rrPtrDiff( from_end - from_ptr ), -1 );
 	
 	U8 first_byte = *from_ptr;
 	U32 array_type = first_byte >> 4;
@@ -106,13 +106,13 @@ static RADINLINE SINTa newLZ_get_array(U8ptr * ptr_to, const U8 * from, const U8
 	else
 	{	
 		// can I get 4 bytes? :
-		if ( from_ptr+4 > from_end )
+		if ( 4 > rrPtrDiff( from_end - from_ptr ) )
 		{
 			// could be a 3-byte header at end of stream with zero payload
 			// -> this cannot occur currently in valid Kraken/Mermaid/Selkie data
 			//	 they always have >= 1 byte after the "arrays" data
 			//	 but you could hit it on corrupt/truncated data, or in some future codec
-			if ( from_ptr+3 == from_end )
+			if ( 3 == rrPtrDiff( from_end - from_ptr ) )
 			{		
 				// get 3-byte header :
 				U32 header = RR_GET24_BE_NOOVERRUN(from_ptr);
@@ -141,7 +141,7 @@ static RADINLINE SINTa newLZ_get_array(U8ptr * ptr_to, const U8 * from, const U8
 			if ( (header>>NEWLZ_ARRAY_SIZE_BITS) != 0 ) NEWLZ_ARRAY_RETURN_FAILURE();
 			
 			if ( to_len > to_len_max ) NEWLZ_ARRAY_RETURN_FAILURE();
-			if ( from_ptr+to_len > from_end ) NEWLZ_ARRAY_RETURN_FAILURE();
+			if ( to_len > rrPtrDiff( from_end - from_ptr ) ) NEWLZ_ARRAY_RETURN_FAILURE();
 			
 			if ( force_copy_uncompressed )
 			{

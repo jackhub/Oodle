@@ -33,10 +33,6 @@ static RADNOINLINE bool newLZ_decode_parse(
 	const U8 * literals_ptr = arrays->literals_ptr;
 	SINTa literals_count = arrays->literals_count;
 
-	const S32 * pfoffsets = arrays->pfoffsets;
-	const S32 * pfoffsets_ptr = pfoffsets;
-	const S32 * pfoffsets_end = pfoffsets_ptr + arrays->pfoffsets_count;
-					
 	//RAD_ALIGN(newLZ_dec_LOs,lastoffsets,16);
 	newLZ_dec_LOs lastoffsets;
 	newLZ_dec_LOs_Reset_Neg(lastoffsets);
@@ -152,7 +148,7 @@ static RADNOINLINE bool newLZ_decode_parse(
 		#undef SWITCH_TO_LITERAL_SCRATCH_BUF
 
 		// check whether we consumed all our input
-		if ( offsets_ptr != offsets + offsets_count || excesses_ptr != excesses_end || pfoffsets_ptr != pfoffsets_end )
+		if ( offsets_ptr != offsets + offsets_count || excesses_ptr != excesses_end )
 			return false;
 
 		// can do an only-literals block by having zero packets and everything in the final lrl :

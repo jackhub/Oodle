@@ -18,6 +18,13 @@
 #include "newlz_offsets.h"
 #include "newlzhc_decoder.h"
 
+// SimpleProf (this is still a NOP unless explicitly turned on in CDep via -DOODLE_SIMPLEPROF_BUILD)
+/*
+#include "rrsimpleprof.h"
+/*/
+#include "rrsimpleprofstub.h"
+/**/
+
 #define CHECK(x)
 
 //=============================================================================

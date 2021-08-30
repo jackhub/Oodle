@@ -88,94 +88,87 @@ NEWLZ !!
 			// validated (which the big LRL case below handles).
 			RR_ASSERT( (match_zone_end - to_ptr) >= RR_MIN(lrl,kBigLRL) );
 		
-			{	
-					
-				newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr,to_ptr+neg_offset,literals_ptr);
-				
-				CHECK( RR_ASSERT( memcmp(to_ptr,check_ptr,RR_MIN(8,lrl)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl) ) );
+			newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr,to_ptr+neg_offset,literals_ptr);
+			CHECK( RR_ASSERT( memcmp(to_ptr,check_ptr,RR_MIN(8,lrl)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl) ) );
 
-				if ( lrl > 8 )
-				{								
-					// lrl can be huge (20k) but this handles it just fine					
-					// lrl >= 9 , 8 already done, so do 8 more, then loop on steps of 8
-					
-					newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr+8,(to_ptr+8)+neg_offset,literals_ptr+8);
-					CHECK( RR_ASSERT( memcmp(to_ptr+8,check_ptr,RR_MIN(8,lrl-8)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl-8) ) );
-	
-					// long lrl case
-					if ( lrl > 16 )
+			if ( lrl > 8 )
+			{
+				// lrl can be huge (20k) but this handles it just fine
+				// lrl >= 9 , 8 already done, so do 8 more, then loop on steps of 8
+
+				newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr+8,(to_ptr+8)+neg_offset,literals_ptr+8);
+				CHECK( RR_ASSERT( memcmp(to_ptr+8,check_ptr,RR_MIN(8,lrl-8)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl-8) ) );
+
+				// long lrl case
+				if ( lrl > 16 )
+				{
+					newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr+16,(to_ptr+16)+neg_offset,literals_ptr+16);
+					CHECK( RR_ASSERT( memcmp(to_ptr+16,check_ptr,RR_MIN(8,lrl-16)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl-16) ) );
+
+					if_unlikely ( lrl > 24 ) // @@ this threshold must match kBigLRL!!!
 					{
-						newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr+16,(to_ptr+16)+neg_offset,literals_ptr+16);
-						CHECK( RR_ASSERT( memcmp(to_ptr+16,check_ptr,RR_MIN(8,lrl-16)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl-16) ) );
-	
-						if_unlikely ( lrl > 24 ) // @@ this threshold must match kBigLRL!!!
+						RR_COMPILER_ASSERT( kBigLRL == 24 );
+
+						// validate LRL
+						if_unlikely ( (literals_check - literals_ptr) <= lrl )
 						{
-							RR_COMPILER_ASSERT( kBigLRL == 24 );
-
-							// validate LRL
-							if_unlikely ( (literals_check - literals_ptr) <= lrl )
-							{
-								#if ! NEWLZ_PARSE_CAREFUL_OUTPUT
-								// if this LRL gets us past the literal mark, we need to checkpoint after this packet.
-								//  (this is a way of making us break out of the packets loop after the match copy)
-								packets_check = packets;
-								#endif
-
-								// if it outright extends past the end of the literal buffer, the stream is bad.
-								if_unlikely ( (literals_end - literals_ptr) < lrl )
-									return false;
-							}
-
-							#if !NEWLZ_PARSE_CAREFUL_OUTPUT // careful output mode checks ML for every match and runs when we're past the safe area end.
-							if_unlikely ( (output_safe_end - to_ptr) < lrl )
-							{
-								#if ! NEWLZ_PARSE_CAREFUL_OUTPUT
-								// if this LRL gets us outside the safe output area, we need to checkpoint after this packet.
-								packets_check = packets;
-								#endif
-
-								// if it gets us outside the match zone, that's outright forbidden, since we're always
-								// followed by a match.
-								if_unlikely ( (match_zone_end - to_ptr) < lrl )
-									return false;
-							}
+							#if ! NEWLZ_PARSE_CAREFUL_OUTPUT
+							// if this LRL gets us past the literal mark, we need to checkpoint after this packet.
+							//  (this is a way of making us break out of the packets loop after the match copy)
+							packets_check = packets;
 							#endif
 
-							// At this point, this really needs to hold.
-							// If not, we screwed something up.
-							RR_ASSERT( lrl <= (match_zone_end - to_ptr) );
+							// if it outright extends past the end of the literal buffer, the stream is bad.
+							if_unlikely ( (literals_end - literals_ptr) < lrl )
+								return false;
+						}
 
-							to_ptr += 24;
-							literals_ptr += 24;
-							lrl -= 24;
+						#if !NEWLZ_PARSE_CAREFUL_OUTPUT // careful output mode checks ML for every match and runs when we're past the safe area end.
+						if_unlikely ( (output_safe_end - to_ptr) < lrl )
+						{
+							#if ! NEWLZ_PARSE_CAREFUL_OUTPUT
+							// if this LRL gets us outside the safe output area, we need to checkpoint after this packet.
+							packets_check = packets;
+							#endif
 
-							for (;;)
-							{
-								// do a copy-16 loop here? tried it, no big wins; long lrl is already fast
-								newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr,to_ptr+neg_offset,literals_ptr);
-								
-								CHECK( RR_ASSERT( memcmp(to_ptr,check_ptr,RR_MIN(8,lrl)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl) ) );
-								
-								to_ptr += 8;
-								literals_ptr += 8;
-								lrl -= 8;
-								if ( lrl <= 0 )
-									break;
-							}
+							// if it gets us outside the match zone, that's outright forbidden, since we're always
+							// followed by a match.
+							if_unlikely ( (match_zone_end - to_ptr) < lrl )
+								return false;
+						}
+						#endif
+
+						// At this point, this really needs to hold.
+						// If not, we screwed something up.
+						RR_ASSERT( lrl <= (match_zone_end - to_ptr) );
+
+						to_ptr += 24;
+						literals_ptr += 24;
+						lrl -= 24;
+
+						for (;;)
+						{
+							// do a copy-16 loop here? tried it, no big wins; long lrl is already fast
+							newlz_literals_copy8<NEWLZ_DECODE_LITERALS_TYPE>(to_ptr,to_ptr+neg_offset,literals_ptr);
+
+							CHECK( RR_ASSERT( memcmp(to_ptr,check_ptr,RR_MIN(8,lrl)) == 0 ); RR_DURING_ASSERT( check_ptr += RR_MIN(8,lrl) ) );
+
+							to_ptr += 8;
+							literals_ptr += 8;
+							lrl -= 8;
+							if ( lrl <= 0 )
+								break;
 						}
 					}
-
-					// lrl is negative cuz we went too far; back up:
-					to_ptr += lrl;
-					literals_ptr += lrl;
-				}
-				else
-				{				
-					to_ptr += lrl;
-					literals_ptr += lrl;
 				}
 			}
 		}
+
+		// small LRLs didn't update pointers at all; long LRLs
+		// did but overshot (and now have negative LRL). Take
+		// care of the final advance for both.
+		to_ptr += lrl;
+		literals_ptr += lrl;
 
 		// decode offset :
 					

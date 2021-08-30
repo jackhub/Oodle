@@ -67,6 +67,13 @@ IDOC typedef void (OODLE_CALLBACK t_OodleFPVoidVoidStar)(void *);
 /* Maximum number of dependencies Oodle will ever pass to a RunJob callback
 */
 
+#define OODLE_JOB_NULL_HANDLE	 (0) IDOC
+/* Value 0 of Jobify handles is reserved to mean none
+*	Wait(OODLE_JOB_NULL_HANDLE) is a nop
+*   if RunJob returns OODLE_JOB_NULL_HANDLE it means the job
+*   was run synchronously and no wait is required
+*/
+
 #define t_fp_Oodle_Job	t_OodleFPVoidVoidStar IDOC
 /* Job function pointer for Plugin Jobify system
 

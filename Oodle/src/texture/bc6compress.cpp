@@ -177,49 +177,6 @@ RADFORCEINLINE int bc6_scaled_to_half<1>(int x)
 	return (x * 31) / 32;
 }
 
-// helper function used when flt is known to not have its sign bit set
-static RADFORCEINLINE S32 bc6_half_compand_nonneg(U16 flt)
-{
-	BC6CompandTableEntry t = bc6_compand[flt >> 6];
-	return (t.base << 6) + (flt & 0x3f) * t.diff;
-}
-
-#ifdef DO_BUILD_SSE4
-static RADFORCEINLINE Vec128 bc6_half_compand_nonneg_4x_sse4(const Vec128 &x)
-{
-	Vec128 load_inds = _mm_srli_epi32(x, 6);
-
-	Vec128 lerp_mult = _mm_and_si128(x, _mm_set1_epi32(0x3f));
-	Vec128 pmaddwd_mult = _mm_or_si128(_mm_slli_epi32(lerp_mult, 16), _mm_set1_epi32(0x40));
-
-	// whee, manual gather bullshit!
-	U32 ind0 = _mm_cvtsi128_si32(load_inds);
-	U32 ind1 = _mm_extract_epi32(load_inds, 1);
-	U32 ind2 = _mm_extract_epi32(load_inds, 2);
-	U32 ind3 = _mm_extract_epi32(load_inds, 3);
-
-	Vec128 tab0 = load32u(&bc6_compand[ind0]);
-	Vec128 tab1 = load32u(&bc6_compand[ind1]);
-	tab0 = _mm_insert_epi32(tab0, *(S32 *)&bc6_compand[ind2], 1);
-	tab1 = _mm_insert_epi32(tab1, *(S32 *)&bc6_compand[ind3], 1);
-	Vec128 tab = _mm_unpacklo_epi32(tab0, tab1);
-
-	return _mm_madd_epi16(tab, pmaddwd_mult);
-}
-#endif
-
-static RADFORCEINLINE S32 bc6_half_compand_unsigned(U16 flt)
-{
-	flt = (flt & 0x8000) ? 0 : flt; // clamp signed values to 0
-	return bc6_half_compand_nonneg(flt);
-}
-
-static RADFORCEINLINE S32 bc6_half_compand_signed(U16 flt)
-{
-	S32 val = bc6_half_compand_nonneg(flt & 0x7fff);
-	return (flt & 0x8000) ? -val : val;
-}
-
 static int remap_half_to_int(U16 half_flt)
 {
 	return (half_flt < 0x8000) ? half_flt : 0x8000 - half_flt;
@@ -265,7 +222,7 @@ static const F32 weights_sqrt[2][3] =
 
 void BC6Input::init(const U16 blk_f16[64], const rrRandState &in_rand_seed, BC6Flags flags)
 {
-	active_metric = BC6METRIC_PQSAD;
+	active_metric = BC6METRIC_MRSSE;
 	channel_weights_sqrt = (flags & BC6ENC_WEIGHTED_CHANNELS) ? weights_sqrt[1] : weights_sqrt[0];
 
 	for (int i = 0; i < 16; ++i)
@@ -287,25 +244,6 @@ void BC6Input::init(const U16 blk_f16[64], const rrRandState &in_rand_seed, BC6F
 		sum_sq = radtex_sqr(blockf32[0][i]) + radtex_sqr(blockf32[1][i]) + radtex_sqr(blockf32[2][i]);
 		sum_sq = RR_MAX(sum_sq, 1.42108547e-14f); // (2^(-23))^2 = smallest float16 subnormal, squared
 		weightf32[i] = 0.5f / sum_sq; // 1 / (2 * sum_sq)
-	}
-
-	if(flags & BC6ENC_SIGNED)
-	{
-		for(int i = 0; i < 16; ++i)
-		{
-			blockpq[0][i] = bc6_half_compand_signed(blk_f16[i*4 + 0]);
-			blockpq[1][i] = bc6_half_compand_signed(blk_f16[i*4 + 1]);
-			blockpq[2][i] = bc6_half_compand_signed(blk_f16[i*4 + 2]);
-		}
-	}
-	else
-	{
-		for(int i = 0; i < 16; ++i)
-		{
-			blockpq[0][i] = bc6_half_compand_unsigned(blk_f16[i*4 + 0]);
-			blockpq[1][i] = bc6_half_compand_unsigned(blk_f16[i*4 + 1]);
-			blockpq[2][i] = bc6_half_compand_unsigned(blk_f16[i*4 + 2]);
-		}
 	}
 
 	rand_seed = in_rand_seed;
@@ -659,91 +597,6 @@ struct BC6Results
 
 // ---- index finding
 
-struct BC6ColorSetExactPQ
-{
-	RAD_ALIGN(S32, col[2][3][16], 16); // [subset][chan][index]
-
-	template<typename Mode>
-	void init(const BC6Endpoints &ep, const BC6ModeDesc &mode);
-};
-
-template<typename Mode>
-void BC6ColorSetExactPQ::init(const BC6Endpoints &ep, const BC6ModeDesc &mode)
-{
-	const int num_lerp = 1 << Mode::ib;
-
-	for (int s = 0; s < Mode::ns; ++s)
-	{
-		for (int c = 0; c < 3; ++c)
-		{
-			int ep0 = bc6_dequant<Mode::is_signed>(mode.epb, ep.quant[s*2+0][c]);
-			int ep1 = bc6_dequant<Mode::is_signed>(mode.epb, ep.quant[s*2+1][c]);
-
-#ifdef DO_BUILD_SSE4
-			// NOTE: almost fits in 16-bit lanes but not quite:
-			// in unsigned mode, we have a diff of two unsigned 16-bit values,
-			// which takes 17 bits; in singed mode, diff of two signed 17-bit values,
-			// which takes 18 bits.
-			Vec128 vbase = _mm_set1_epi32(ep0 * 64 + 32);
-			Vec128 vdiff = _mm_set1_epi32(ep1 - ep0); // yes, ep0-ep1
-
-			for (int i = 0; i < num_lerp; i += 4)
-			{
-				Vec128 factors = _mm_cvtepu8_epi32(load32u(&radtex_lerp_factor[Mode::ib][i]));
-				Vec128 scaled_a = _mm_add_epi32(vbase, _mm_mullo_epi32(vdiff, factors));
-
-				// mask off the bits that would be shifed out during >>6
-				Vec128 masked_a = _mm_and_si128(scaled_a, _mm_set1_epi32(-64));
-				Vec128 abs_a = Mode::is_signed ? _mm_sign_epi32(masked_a, masked_a) : masked_a;
-
-				// abs(a) * 31 given (abs(a) << 6) is (abs(a) * 62) / 2 and the
-				// (abs(a) * 62) part is just:
-				Vec128 abs_a_62 = _mm_sub_epi32(abs_a, _mm_srli_epi32(abs_a, 5));
-				Vec128 half_float;
-
-				if (Mode::is_signed)
-				{
-					// we need (abs(a) * 31) >> 5 = abs_a_62 >> 6
-					half_float = _mm_srli_epi32(abs_a_62, 6);
-				}
-				else
-				{
-					// we need (abs(a) * 31) >> 6 = abs_a_62 >> 7
-					half_float = _mm_srli_epi32(abs_a_62, 7);
-				}
-
-				Vec128 companded = bc6_half_compand_nonneg_4x_sse4(half_float);
-				if (Mode::is_signed) // put the sign back
-					companded = _mm_sign_epi32(companded, scaled_a);
-
-				store128u(&col[s][c][i], companded);
-			}
-#else
-			int base = ep0 * 64 + 32;
-			int diff = ep1 - ep0;
-
-			for (int i = 0; i < num_lerp; ++i)
-			{
-				// NOTE(fg): this is exact
-				int a = (base + radtex_lerp_factor[Mode::ib][i] * diff) >> 6;
-
-				if (Mode::is_signed)
-				{
-					int absa = (abs(a) * 31) >> 5;
-					S32 xi = bc6_half_compand_nonneg(static_cast<U16>(absa));
-					col[s][c][i] = (a < 0) ? -xi : xi;
-				}
-				else
-				{
-					a = (a * 31) >> 6;
-					col[s][c][i] = bc6_half_compand_nonneg(static_cast<U16>(a));
-				}
-			}
-#endif
-		}
-	}
-}
-
 struct BC6ColorSetLinearBits
 {
 	RAD_ALIGN(F32, dotdir[2][4], 16); // [subset][chan], chan 3 = bias
@@ -901,7 +754,6 @@ void BC6ColorSetExactRel::init(const BC6Endpoints &ep, const BC6ModeDesc &mode, 
 
 union BC6ColorSet
 {
-	BC6ColorSetExactPQ exact_pq;
 	BC6ColorSetExactRel exact_rel;
 	BC6ColorSetLinearBits linear_bits;
 
@@ -921,134 +773,6 @@ static RAD_ALIGN(const U32, g_identity_map[16], 16) =
 	8, 9, 10, 11, 12, 13, 14, 15
 };
 #endif
-
-template <typename Mode>
-static BC6Error calc_indexes_exact_pq(const BC6Input &in, BC6BlockState *st, const BC6ColorSetExactPQ &set)
-{
-	BC6Error tot_err = 0;
-	const int num_lerp = 1 << Mode::ib;
-
-#ifdef DO_BUILD_SSE4
-	U32 im = radtex_section_tbl[Mode::ns][st->p];
-	Vec128 best_arr[16];
-	for (int i = 0; i < 16; ++i)
-	{
-		Vec128 pixr = _mm_set1_epi32(in.blockpq[0][i]);
-		Vec128 pixg = _mm_set1_epi32(in.blockpq[1][i]);
-		Vec128 pixb = _mm_set1_epi32(in.blockpq[2][i]);
-		const S32 * colbase = set.col[0][0];
-		if (Mode::ns > 1)
-		{
-			colbase = set.col[im & 1][0];
-			im >>= 2;
-		}
-
-		Vec128 best = _mm_set1_epi32(0x7ffffff0);
-		for (int j = 0; j < num_lerp; j += 4)
-		{
-			// Load this batch of interpolated colors
-			Vec128 colr = load128a(colbase + 0*16 + j);
-			Vec128 colg = load128a(colbase + 1*16 + j);
-			Vec128 colb = load128a(colbase + 2*16 + j);
-
-			// Calculate the errors
-			Vec128 e;
-			e = sse4_abs32(_mm_sub_epi32(colr, pixr));
-			e = _mm_add_epi32(e, sse4_abs32(_mm_sub_epi32(colg, pixg)));
-			e = _mm_add_epi32(e, sse4_abs32(_mm_sub_epi32(colb, pixb)));
-			e = _mm_slli_epi32(e, 4);
-			e = _mm_add_epi32(e, load128a(g_identity_map + j));
-
-			best = _mm_min_epi32(best, e);
-		}
-
-		best_arr[i] = best;
-	}
-
-	Vec128 sum_err = _mm_setzero_si128();
-	for (int i = 0; i < 16; i += 4)
-	{
-		// Complete min reduction: need to transpose first
-		Vec128 in0 = best_arr[i + 0];
-		Vec128 in1 = best_arr[i + 1];
-		Vec128 in2 = best_arr[i + 2];
-		Vec128 in3 = best_arr[i + 3];
-
-		// Tranpose pass 1
-		Vec128 a0 = _mm_unpacklo_epi32(in0, in2);
-		Vec128 a1 = _mm_unpacklo_epi32(in1, in3);
-		Vec128 a2 = _mm_unpackhi_epi32(in0, in2);
-		Vec128 a3 = _mm_unpackhi_epi32(in1, in3);
-
-		// Transpose pass 2
-		Vec128 b0 = _mm_unpacklo_epi32(a0, a1);
-		Vec128 b1 = _mm_unpackhi_epi32(a0, a1);
-		Vec128 b2 = _mm_unpacklo_epi32(a2, a3);
-		Vec128 b3 = _mm_unpackhi_epi32(a2, a3);
-
-		// Min reduction
-		Vec128 best01 = _mm_min_epi32(b0, b1);
-		Vec128 best23 = _mm_min_epi32(b2, b3);
-		Vec128 best = _mm_min_epi32(best01, best23);
-
-		// Emit best indices
-		Vec128 inds = _mm_and_si128(best, _mm_set1_epi32(0xf));
-		inds = _mm_shuffle_epi8(inds, _mm_setr_epi8(0,4,8,12, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1));
-		store32u(st->idxs.ind + i, inds);
-
-		// Sum errors
-		sum_err = _mm_add_epi32(sum_err, _mm_srli_epi32(best, 4));
-	}
-
-	// Final error reduction
-	tot_err = reduce_add_s32(sum_err);
-#else
-	U32 im = radtex_section_tbl[Mode::ns][st->p];
-	for (int i = 0; i < 16; ++i)
-	{
-		int s = im & 3;
-		im >>= 2;
-
-		BC6Error best;
-		best  = abs(in.blockpq[0][i] - set.col[s][0][0]);
-		best += abs(in.blockpq[1][i] - set.col[s][1][0]);
-		best += abs(in.blockpq[2][i] - set.col[s][2][0]);
-		best <<= 4;
-
-		for (int j = 1; j < num_lerp; ++j)
-		{
-			BC6Error e;
-			e  = abs(in.blockpq[0][i] - set.col[s][0][j]);
-			e += abs(in.blockpq[1][i] - set.col[s][1][j]);
-			e += abs(in.blockpq[2][i] - set.col[s][2][j]);
-			e = (e << 4) + j;
-			best = RR_MIN(best, e);
-		}
-		tot_err += best >> 4;
-		st->idxs.ind[i] = static_cast<U8>(best & 0xf);
-	}
-#endif
-
-	return tot_err;
-}
-
-template<typename Mode>
-static BC6Error eval_indexes_exact_pq(const BC6Input &in, const BC6BlockState *st, const BC6ColorSetExactPQ &set)
-{
-	BC6Error tot_err = 0;
-	U32 im = radtex_section_tbl[Mode::ns][st->p];
-	for (int i = 0; i < 16; ++i)
-	{
-		int s = im & 3;
-		im >>= 2;
-
-		UINTa ind = st->idxs.ind[i];
-		tot_err += abs(in.blockpq[0][i] - set.col[s][0][ind]);
-		tot_err += abs(in.blockpq[1][i] - set.col[s][1][ind]);
-		tot_err += abs(in.blockpq[2][i] - set.col[s][2][ind]);
-	}
-	return tot_err;
-}
 
 static BC6Error component_err(int diff)
 {
@@ -1415,7 +1139,6 @@ void BC6ColorSet::init(const BC6Input &in, const BC6Endpoints &ep, const BC6Mode
 {
 	switch (in.active_metric)
 	{
-	case BC6METRIC_PQSAD:		exact_pq.init<Mode>(ep, mode); break;
 	case BC6METRIC_LOGSPACE:	linear_bits.init<Mode>(ep, mode); break;
 	case BC6METRIC_MRSSE:		exact_rel.init<Mode>(ep, mode, in.channel_weights_sqrt); break;
 	}
@@ -1426,7 +1149,6 @@ static BC6Error calc_indexes(const BC6Input &in, BC6BlockState *st, const BC6Col
 {
 	switch (in.active_metric)
 	{
-	case BC6METRIC_PQSAD:		return calc_indexes_exact_pq<typename Mode::index_mode>(in, st, set.exact_pq);
 	case BC6METRIC_LOGSPACE:	return calc_indexes_linear_bits<typename Mode::index_mode>(in, st, set.linear_bits);
 	case BC6METRIC_MRSSE:		return calc_indexes_exact_rel<typename Mode::index_mode>(in, st, set.exact_rel);
 	}
@@ -1440,7 +1162,6 @@ static BC6Error eval_indexes(const BC6Input &in, const BC6BlockState *st, const 
 {
 	switch (in.active_metric)
 	{
-	case BC6METRIC_PQSAD:		return eval_indexes_exact_pq<typename Mode::index_mode>(in, st, set.exact_pq);
 	case BC6METRIC_LOGSPACE:	return eval_indexes_linear_bits<typename Mode::index_mode>(in, st, set.linear_bits);
 	case BC6METRIC_MRSSE:		return eval_indexes_exact_rel<typename Mode::index_mode>(in, st, set.exact_rel);
 	}
@@ -2838,22 +2559,13 @@ void bc6enc_state_from_bits(BC6BlockState * st, const U8 * input_bc6h, bool is_s
 	for (int i = 0; i < 16; ++i)
 		st->idxs.ind[i] = desc.inds[i];
 
-	int epb_shift = (is_signed ? 15 : 16) - m->epb;
-
 	for (int i = 0; i < m->ns * 2; ++i)
 	{
 		for (int c = 0; c < 3; ++c)
 		{
-			// "raw" endpoints in BC6HBlockRawDesc (corresponding to the internal 17-bit integer
-			// representation in BC6H) are in the BC6 internal scaled representation
-			S32 scaled = desc.endpoints_raw[c][i];
-
-			// our "quant" endpoints are the actual quantized values stored in the endpoints
-			// (but with any delta-ing already undone)
-			if (m->epb == 16) // just raw values
-				st->endpoints.quant[i][c] = scaled;
-			else // actually quantized
-				st->endpoints.quant[i][c] = scaled >> epb_shift;
+			// grab the coded values from the block
+			S32 scaled = desc.endpoints_internal[c][i];
+			st->endpoints.quant[i][c] = desc.endpoints_quant[c][i];
 
 			// our "raw" endpoints are straight 16-bit half-floats
 			if (is_signed)

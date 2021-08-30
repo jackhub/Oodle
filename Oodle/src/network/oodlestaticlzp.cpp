@@ -8,6 +8,7 @@
 //idoc(end)
 
 #include "oodlecore.h"
+#include "oodlenetworkversion.h"
 
 #include "oodlestaticlzp.h"
 
@@ -82,6 +83,15 @@ OODLE_NS_START
 // no match pointers start within this distance of end :
 //	(they can end in there)
 #define LZP_DICTIONARY_END_PAD	256
+
+
+S32 normalize_counts(int oodle_major_version,U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet)
+{
+	if ( oodle_major_version <= 5 )
+		return normalize_counts_v5(to,to_sum_desired,from,from_sum,alphabet);
+	else
+		return normalize_counts_v6(to,to_sum_desired,from,from_sum,alphabet);
+}
 
 //===================================================================================
 
@@ -1819,7 +1829,7 @@ struct OodleNetwork1UDP_CountingState
 		}
 	}
 	
-	void Normalize( )
+	void Normalize()
 	{
 		for LOOP(c,ON1UDP_CONTEXT_COUNT)
 		{
@@ -1829,7 +1839,7 @@ struct OodleNetwork1UDP_CountingState
 			m_total_match[c] = sum(h.counts,h.counts+ON1UDP_ALPHABET);
 			
 			// normal from "h" to "normc"
-			normalize_counts(normc.counts,ON1UDP_TANS_L,h.counts,m_total_match[c],ON1UDP_ALPHABET);
+			normalize_counts_current(normc.counts,ON1UDP_TANS_L,h.counts,m_total_match[c],ON1UDP_ALPHABET);
 			// then copy over "h" :
 			h = normc;
 		}
@@ -1842,7 +1852,7 @@ struct OodleNetwork1UDP_CountingState
 			m_total_nomatch[c] = sum(h.counts,h.counts+256);
 
 			// normal from "h" to "normc"
-			normalize_counts(normc.counts,ON1UDP_TANS_L,h.counts,m_total_nomatch[c],256);
+			normalize_counts_current(normc.counts,ON1UDP_TANS_L,h.counts,m_total_nomatch[c],256);
 			// then copy over "h" :
 			h = normc;
 		}
@@ -2847,7 +2857,12 @@ static float adaptive_quantizer(U32 cur,U32 total,U32 context_count)
 	return (float) l2;
 }
 
-OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateCompacted * to, const OodleNetwork1UDP_State * from )
+OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateCompacted * to, const OodleNetwork1UDP_State * from)
+{
+	return OodleNetwork1UDP_State_Compact_ForVersion(to,from,OODLE2NET_VERSION_MAJOR);
+}
+
+OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact_ForVersion( OodleNetwork1UDP_StateCompacted * to, const OodleNetwork1UDP_State * from, S32 for_oodle_major_version)
 {
 	U8 * tobuf = to->buffer;
 
@@ -2868,7 +2883,7 @@ OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateComp
 	}
 	
 	U32 o0_histo_norm[ON1UDP_ALPHABET];
-	normalize_counts(o0_histo_norm,ON1UDP_TANS_L,o0_histo_accum,rrSumOfHistogram(o0_histo_accum,ON1UDP_ALPHABET),ON1UDP_ALPHABET);
+	normalize_counts(for_oodle_major_version,o0_histo_norm,ON1UDP_TANS_L,o0_histo_accum,rrSumOfHistogram(o0_histo_accum,ON1UDP_ALPHABET),ON1UDP_ALPHABET);
 	
 	rrTANS_PackCounts(&vb,ON1UDP_TANS_L_BITS,ON1UDP_ALPHABET,o0_histo_norm,ON1UDP_ALPHABET,ON1UDP_ALPHABET,true);
 		
@@ -2911,7 +2926,7 @@ OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateComp
 	
 	// renormalize the first 256 :
 	memcpy(o0_histo_accum,o0_histo_norm,256*sizeof(U32));
-	normalize_counts(o0_histo_norm,ON1UDP_TANS_L,o0_histo_accum,rrSumOfHistogram(o0_histo_accum,256),256);
+	normalize_counts(for_oodle_major_version,o0_histo_norm,ON1UDP_TANS_L,o0_histo_accum,rrSumOfHistogram(o0_histo_accum,256),256);
 	
 	{	
 		U32 sum_total_nomatch = sum(from->m_total_nomatch,from->m_total_nomatch+256);
@@ -2957,6 +2972,11 @@ OOFUNC1 SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateComp
 
 OOFUNC1 rrbool OOFUNC2 OodleNetwork1UDP_State_Uncompact( OodleNetwork1UDP_State * to, const OodleNetwork1UDP_StateCompacted * from )
 {
+	return OodleNetwork1UDP_State_Uncompact_ForVersion(to,from,OODLE2NET_VERSION_MAJOR);
+}
+
+OOFUNC1 rrbool OOFUNC2 OodleNetwork1UDP_State_Uncompact_ForVersion( OodleNetwork1UDP_State * to, const OodleNetwork1UDP_StateCompacted * from, S32 for_oodle_major_version)
+{
 	U32 bufSize =  from->bufSize;
 
 	rrVarBits_Temps();
@@ -2987,7 +3007,7 @@ OOFUNC1 rrbool OOFUNC2 OodleNetwork1UDP_State_Uncompact( OodleNetwork1UDP_State 
 				histo[a] = count;
 			}			
 			
-			to->m_coders_match[ctx].set_from_histo(histo);
+			to->m_coders_match[ctx].set_from_histo(histo,for_oodle_major_version);
 		}
 	
 	}
@@ -3003,7 +3023,7 @@ OOFUNC1 rrbool OOFUNC2 OodleNetwork1UDP_State_Uncompact( OodleNetwork1UDP_State 
 	//rrprintf("Uncompact: o0_histo_temp = %08X\n",rrFNVHash((const U8 *)o0_histo_temp,sizeof(o0_histo_temp)) );
 	
 	// renormalize first 256 of o0_histo_norm to sum to ON1UDP_TANS_L
-	normalize_counts(o0_histo_norm,ON1UDP_TANS_L,o0_histo_temp,sum_of_first_256,256);
+	normalize_counts(for_oodle_major_version,o0_histo_norm,ON1UDP_TANS_L,o0_histo_temp,sum_of_first_256,256);
 	
 	//@@
 	//rrprintf("Uncompact: o0_histo_norm = %08X\n",rrFNVHash((const U8 *)o0_histo_norm,256*sizeof(U32)) );
@@ -3029,7 +3049,7 @@ OOFUNC1 rrbool OOFUNC2 OodleNetwork1UDP_State_Uncompact( OodleNetwork1UDP_State 
 				histo[a] = count;
 			}			
 			
-			to->m_coders_nomatch[ctx].set_from_histo(histo);			
+			to->m_coders_nomatch[ctx].set_from_histo(histo,for_oodle_major_version);			
 		}
 	}
 	

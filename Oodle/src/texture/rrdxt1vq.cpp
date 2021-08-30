@@ -13,7 +13,6 @@
 #include "rrdxtcblock.h"
 #include "blocksurface.h"
 #include "rrdxtcompresshelp.h"
-#include "rrdxtcompresshelp.inl"
 #include "rrdxtccompress.h"
 #include "rrdxtccompress.inl"
 #include "rrsurfacedxtc.h"
@@ -50,87 +49,185 @@
 //#include "rrsimpleprof.h"
 #include "rrsimpleprofstub.h"
 
-//===========================================
-
-// $$$$ : space-quality tradeoffs
+RR_NAMESPACE_START
 
 //===========================================
 
-// size of endpoint palette to search in endpoints pass : $$$$
+// speed-quality tradeoffs
 
-// note that endpoints vq palette gets the heuristic reduce ( < 1024 and often less)
-//	this needs to be much bigger than for indices
-//	because indices get a separate merger pass
-//	endpoints relies entirely on this for its merging
-//#define ENDPOINTS_VQ_PALETTE_SEARCH_LIMIT			9999 // no limit
-#define ENDPOINTS_VQ_PALETTE_SEARCH_LIMIT			1024 // no limit
-//#define ENDPOINTS_VQ_PALETTE_SEARCH_LIMIT			512
+struct rrDXT1_VQ_Config
+{
+	// size of endpoint palette to search in endpoints pass :
 
-// with lz_window can this be smaller now?
-//	-> nah still a pretty big penalty
-#define MAX_NUM_ADDED_ENTRIES_TO_TRY_ENDPOINTS	256 
-//#define MAX_NUM_ADDED_ENTRIES_TO_TRY_ENDPOINTS	128 
+	// note that endpoints vq palette gets the heuristic reduce ( < 1024 and often less)
+	//	this needs to be much bigger than for indices
+	//	because indices get a separate merger pass
+	//	endpoints relies entirely on this for its merging
+	int endpoints_vq_palette_search_limit;
+	
+	// size of "lz_window" :
+	int max_num_added_entries_to_try_endpoints;
+	
+	// size of index palette to search in index pass :
+	int index_vq_palette_search_limit;
+	int max_num_added_entries_to_try_indices;
+	
+	// final matrix tweaks :
+	// start with larger matrix dim than I want :
+	// 40k @@ ?? initial candidate set for codelen doesn't have a huge effect on speed
+	// these are a fine speed-quality tradeoff, needs careful tweak :
+	int final_pass_matrix_dim_initial;	
+	int final_pass_matrix_dim_search;
+	
+	// early reject distances :
+
+	// !!WARNING!!
+	// because these are lambda-scaled, they are a real nice speedup at low lambda
+	//		not so much at high lambda
+	//		(we do get other speedups at high lambda, due to smaller vq palette sizes)
+	// also quality can be unchanged at high lambda, but affected at low lambda
+	//	the standard "total BPB saved at vcdiff +3"
+	//	  is at quite high lambda
+	//	so you won't see the affect there
+	// if you look at RD curves, you will see it at lower lambda!
+	// -> add a report at vcdiff +1 to see these
+
+	// EARLY_OUT_INDEX_DIFF
+	//	 a full index step from ep0 to ep1 is "6" (0-2-4-6 or 0-3-6)
+	//	 in 3c mode an index black is 13
+	// scaled by lamda : (lambda=10 is identity scaling):
+	
+	int early_out_index_diff_times_lambda;
+	int early_out_index_diff_plus_constant;
+	
+	// early out endpoints :
+	// scaled by lamda :
+	int early_out_color_endpoint_distance;
+	int early_out_endpoints_ssd_max_increase_scaled_by_lambda;
+
+	// index diff early out is a good speed-quality gain on most images
+	//	but not all
+	bool do_index_diff_early_out;
+
+	// we need 2 iterations
+	// 1st iteration is just for seeding
+	//	  it takes us from baseline to a decent candidate VQ encoding
+	// 2nd iteration basically throws away all the work of the 1st iteration
+	//    but it needs the 1st iteration for initial seeds & codelens
+	int num_vq_iterations;
+};
+
+static const rrDXT1_VQ_Config c_config_levels[rrDXTCLevel_Count] =
+{
+	// rrDXTCLevel_VeryFast=0 (== 1 secret level in OodleTex_ API ; too low quality, not currently well optimized for this quality-speed tradeoff)
+	{ 
+		// endpoints :
+		256,64, 
+		// indices:
+		64,32, 
+		// final matrix:
+		60,30,
+		// early_out_index_diff :
+		9,55,
+		// early out endpoints :
+		20,3,
+		// do_index_diff_early_out
+		true,
+		// num_vq_iterations
+		1,
+	},
+	
+	// rrDXTCLevel_Fast=1,		// == OodleTex_EncodeEffortLevel_Low
+	{ 
+		// lowering parameters a lot more here, but it's probably
+		// better to just shrink cluster size (outside) instead.
+		// but whatever, let's just try something.
+
+		// endpoints :
+		500,120,
+		// indices:
+		120,50,
+		// final matrix:
+		140,70,
+		// early_out_index_diff :
+		9,55,
+		// early out endpoints :
+		20,3,
+		// do_index_diff_early_out
+		true,
+		// num_vq_iterations
+		1,
+	},
+
+	// rrDXTCLevel_Slow=2,		// == OodleTex_EncodeEffortLevel_Normal
+	{ 
+		// slightly lower settings and turn off VQ iterations
+		// they're expensive and don't help _that_ much
+
+		// endpoints :
+		800,200, 
+		// indices:
+		200,100, 
+		// final matrix:
+		160,80,
+		// early_out_index_diff :
+		9,55,
+		// early out endpoints :
+		20,3,
+		// do_index_diff_early_out
+		true,
+		// num_vq_iterations
+		1,
+	},
+
+	// DEFAULT :
+	// rrDXTCLevel_VerySlow=3  == OodleTex_EncodeEffortLevel_High == OodleTex_EncodeEffortLevel_Default
+	{ 
+		// endpoints :
+		1024,256, 
+		// indices:
+		256,128, 
+		// final matrix:
+		200,100,
+		// early_out_index_diff :
+		9,55,
+		// early out endpoints :
+		20,3,
+		// do_index_diff_early_out
+		true,
+		// num_vq_iterations
+		2,
+	},
+	
+	// rrDXTCLevel_Reference=4,// == 99 secret level in OodleTex_ API ; too slow to be practical, not a good time-quality tradeoff; just a max quality reference
+	{ 
+		// endpoints :
+		1024,256, 
+		// indices:
+		256,128, 
+		// final matrix:
+		200,100,
+		// early_out_index_diff :
+		9,55,
+		// early out endpoints :
+		20,3,
+		// do_index_diff_early_out
+		true,
+		// num_vq_iterations
+		2,
+	}
+};
+
+const rrDXT1_VQ_Config & rrDXT1_VQ_GetConfig(rrDXTCLevel effort)
+{
+	//rrprintf("rrDXT1_VQ_GetConfig: effort level=%d (%s)\n", effort, rrDXTCLevel_GetName(effort));
+	
+	RR_ASSERT( (int)effort >= 0 && (int)effort < RR_ARRAY_SIZE(c_config_levels) );
+	return c_config_levels[effort];
+	//return c_config[0];
+}
 
 //===========================================
-
-// size of index palette to search in index pass : $$$$
-
-//#define INDEX_VQ_PALETTE_SEARCH_LIMIT			9999 // no limit
-//#define INDEX_VQ_PALETTE_SEARCH_LIMIT			512
-#define INDEX_VQ_PALETTE_SEARCH_LIMIT			256
-
-//#define MAX_NUM_ADDED_ENTRIES_TO_TRY_INDICES	256 
-#define MAX_NUM_ADDED_ENTRIES_TO_TRY_INDICES	128 
-
-//===========================================
-
-// early reject distances : $$$$
-
-// !!WARNING!!
-// because these are lambda-scaled, they are a real nice speedup at low lambda
-//		not so much at high lambda
-//		(we do get other speedups at high lambda, due to smaller vq palette sizes)
-// also quality can be unchanged at high lambda, but affected at low lambda
-//	the standard "total BPB saved at vcdiff +3"
-//	  is at quite high lambda
-//	so you won't see the affect there
-// if you look at RD curves, you will see it at lower lambda!
-// -> add a report at vcdiff +1 to see these
-
-// EARLY_OUT_INDEX_DIFF
-//	 a full index step from ep0 to ep1 is "6" (0-2-4-6 or 0-3-6)
-//	 in 3c mode an index black is 13
-// scaled by lamda : (lambda=10 is identity scaling)
-//#define EARLY_OUT_INDEX_DIFF					24
-//#define EARLY_OUT_INDEX_DIFF					14  // <- smallest value with epsilon quality impact
-//#define EARLY_OUT_INDEX_DIFF					12
-//#define EARLY_OUT_INDEX_DIFF					10  // <- starts to be a real big speedup here
-// at very low lamda EARLY_OUT_INDEX_DIFF of 10 is a bit too low,
-//	  it's hurting quality a bit
-// what we can do is just add a consant to bump it up for low lambda :
-//	
-#define EARLY_OUT_INDEX_DIFF_TIMES_LAMBDA		9
-#define EARLY_OUT_INDEX_DIFF_PLUS_CONSTANT		55
-// at lambda= 10 that takes us to 145 which is the same as the "14" before (smallest value with epsilon quality impact)
-
-// scaled by lamda :
-//#define EARLY_OUT_COLOR_ENDPOINT_DISTANCE		200  // using bbox-dsqr and midpoint
-#define EARLY_OUT_COLOR_ENDPOINT_DISTANCE		20	 // lambda went up 10X
-
-#define EARLY_OUT_ENDPOINTS_SSD_MAX_INCREASE_SCALED_BY_LAMBDA	3
-				
-//===========================================
-
-#define NUM_VQ_ITERATIONS	2
-
-// we need 2 iterations
-// 1st iteration is just for seeding
-//	  it takes us from baseline to a decent candidate VQ encoding
-// 2nd iteration basically throws away all the work of the 1st iteration
-//    but it needs the 1st iteration for initial seeds & codelens
-
-//===========================================
-
 
 /**
 
@@ -158,8 +255,6 @@ the log2(C) difference is only 1 bit difference
 but 32/C is 16 bits difference
 
 **/
-
-RR_NAMESPACE_START
 
 struct block_and_codelen
 {
@@ -233,7 +328,9 @@ struct vq_codelen_help
 
 #define DO_bc1_indices_vq_reduce_CHANGE_INDICES
 
-static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const vector<dword_and_count> & indices_in, int lambda, int nblocks, rrDXT1_VQ_Block * blocks, rrDXT1PaletteMode pal_mode);
+static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const vector<dword_and_count> & indices_in, 
+							int lambda, int nblocks, rrDXT1_VQ_Block * blocks, rrDXT1PaletteMode pal_mode,
+							const rrDXT1_VQ_Config & config);
 
 static void Optimize_Endpoints_For_Assigned_Blocks(
 	vector<rrDXT1_VQ_Block> & blocks,
@@ -248,7 +345,6 @@ static void Optimize_Indices_For_Assigned_Blocks(
 
 static RADFORCEINLINE F32 VQD(const rrColorBlock4x4 & colors,const rrDXT1Block & dxtb,const SingleFloatBlock4x4 & activity,rrDXT1PaletteMode pal_mode)
 {
-	// delta ignoring alpha difference
 	rrColor32BGRA palette[4];
 	DXT1_ComputePalette(dxtb.c0,dxtb.c1,palette,pal_mode);
 	
@@ -532,7 +628,7 @@ static void hacky_clamp_counts(vector<dword_and_count> * pcounting,int nblocks)
 	
 	// the only thing I've ever seen go over 4% are the flats (AAA and FFF)
 	//	they can go to 20%
-	U32 max_count = (nblocks * 50 + 999) / 1000; // 5.0%
+	U32 max_count = (U32) ((nblocks * (UINTa) 50 + 999) / 1000); // 5.0%
 	//U32 max_count = (nblocks * 40 + 999) / 1000; // 4.0%
 	// more extreme clamps :
 	//  -> in the end this hurts the numeric quality scores a tiny bit
@@ -710,18 +806,38 @@ struct block_final_state
 	U32 must_beat_sad;
 };
 
+static bool blocks_all_same(const BlockSurface * blocks)
+{
+	const int nblocks = blocks->count;
+	if ( ! nblocks )
+		return true;
+
+	U64 first_block = RR_GET64_NATIVE_UNALIGNED(BlockSurface_SeekC(blocks,0));
+
+	for (int bi = 1; bi < nblocks; ++bi)
+	{
+		const U8 * cur = BlockSurface_SeekC(blocks,bi);
+		if ( RR_GET64_NATIVE_UNALIGNED(cur) != first_block )
+			return false;
+	}
+
+	return true;
+}
+
 bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 	const BlockSurface * from_blocks,
 	const BlockSurface * baseline_blocks,
 	const BlockSurface * activity_blocks,
 	int lambda,
-	rrDXTCOptions options)
+	rrDXTCOptions options,
+	const rrDXTCRD_Options & rdopts)
 {
-	SIMPLEPROFILE_SCOPE(vq_single);
-				
+	SIMPLEPROFILE_SCOPE(bc1rd);
+
+	const rrDXT1_VQ_Config & config = rrDXT1_VQ_GetConfig(rdopts.effort);
+
 	int nblocks = to_blocks->count;
-	
-	
+
 	RR_ASSERT( to_blocks->pixelFormat == rrPixelFormat_BC1 || to_blocks->pixelFormat == rrPixelFormat_BC2 || to_blocks->pixelFormat == rrPixelFormat_BC3 );
 	RR_ASSERT( baseline_blocks->pixelFormat == to_blocks->pixelFormat );
 
@@ -735,34 +851,52 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		pal_mode = rrDXT1PaletteMode_Alpha;
 	}
 
+	// If baseline blocks are literally all the same (happens in large flat areas),
+	// there's really no point trying anything regardless of lambda
+	if ( blocks_all_same( baseline_blocks ) )
+	{
+		for LOOP(bi,nblocks)
+		{
+			const U8 * fromPtr = BlockSurface_SeekC(baseline_blocks,bi);
+			U8 * toPtr = BlockSurface_Seek(to_blocks,bi);
+			memcpy(toPtr,fromPtr,sizeof(U64));
+		}
+		return true;
+	}
+
 	RR_ASSERT( nblocks <= 32*1024 );
 	
 	vector<rrDXT1_VQ_Block> blocks;
-	blocks.resize(nblocks);
-	
 	vector<dword_and_count> endpoint_counting;
-	endpoint_counting.reserve(nblocks);
-		
 	vector<dword_and_count> index_counting;
-	index_counting.reserve(nblocks);
-	
 	vector<dword_and_count> dwc_scratch;
-	dwc_scratch.reserve(nblocks);
-	
 	vector<U32> endpoints;
-	endpoints.resize(nblocks);
-			
 	vector<U32> indices;
-	indices.resize(nblocks);
-		
+
+	t_hash_dw_to_codelen dw_to_codelen_hash;
+	t_hash_u32_to_u32 dw_to_index_hash;
+	vector<rrDXT1_VQ_Entry> vqendpoints;
+	vector<rrDXT1_VQ_Entry> vqindices;
+
+	{
+		//SIMPLEPROFILE_SCOPE(bc1rd_upfront_alloc);
+		blocks.resize(nblocks);
+		endpoint_counting.reserve(nblocks);
+		index_counting.reserve(nblocks);
+		dwc_scratch.reserve(nblocks);
+		endpoints.resize(nblocks);
+		indices.resize(nblocks);
+
+		dw_to_codelen_hash.reserve_initial_size(nblocks);
+		dw_to_index_hash.reserve_initial_size(nblocks);
+		vqendpoints.reserve( nblocks );
+		vqindices.reserve( nblocks );
+	}
+
 	// read baseline encoding to seed :
-	{		
-		/*
-		double cur_total_vqd = 0;
-		double cur_total_ssd = 0;
-		double cur_total_sad = 0;
-		*/
-		
+	{
+		SIMPLEPROFILE_SCOPE_N(bc1rd_read_baseline,nblocks);
+
 		for LOOP(bi,nblocks)
 		{
 			rrDXT1_VQ_Block * pblock = &blocks[bi];
@@ -963,23 +1097,11 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		sort_and_count_uniques(&endpoint_counting,endpoints);
 		sort_and_count_uniques(&index_counting,indices);				
 	}
-		
-	t_hash_dw_to_codelen dw_to_codelen_hash;
-	dw_to_codelen_hash.reserve_initial_size(nblocks);
-	
-	t_hash_u32_to_u32 dw_to_index_hash;
-	dw_to_index_hash.reserve_initial_size(nblocks);
-	
-	vector<rrDXT1_VQ_Entry> vqendpoints;
-	vqendpoints.reserve( nblocks );
-				
-	vector<rrDXT1_VQ_Entry> vqindices;
-	vqindices.reserve( nblocks );
-	
+
 	{
-	SIMPLEPROFILE_SCOPE(vq_iters);
+	SIMPLEPROFILE_SCOPE_N(bc1rd_core,nblocks);
 	
-	for LOOP(vq_iterations,NUM_VQ_ITERATIONS)
+	for LOOP(vq_iterations,config.num_vq_iterations)
 	{
 		//=================================================
 		// first endpoint loop
@@ -1041,15 +1163,17 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		}
 		
 		{
-		SIMPLEPROFILE_SCOPE(endpoint_pass);
+		SIMPLEPROFILE_SCOPE_N(bc1rd_endpoints,nblocks);
 		
 		int endpoint_vq_palette_size_before = vqendpoints.size32(); // == endpoint_counting.size()
 		//rrprintfvar(endpoint_vq_palette_size_before);
 		RR_ASSERT( endpoint_counting.size() <= 4*1024 );
 
-		int endpoint_vq_palette_num_to_search = RR_MIN(endpoint_vq_palette_size_before,ENDPOINTS_VQ_PALETTE_SEARCH_LIMIT);
+		int endpoint_vq_palette_num_to_search = RR_MIN(endpoint_vq_palette_size_before,config.endpoints_vq_palette_search_limit);
 
-		int lz_window[MAX_NUM_ADDED_ENTRIES_TO_TRY_ENDPOINTS];
+		//int lz_window[config.max_num_added_entries_to_try_endpoints ];
+		vector<int> lz_window;
+		lz_window.resize(config.max_num_added_entries_to_try_endpoints );
 		int lz_window_size = 0;
 		
 		for LOOPVEC(i,blocks)
@@ -1183,14 +1307,14 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 				
 				#if 0 //def __RADSSE2__
 				// TEMP check
-				RR_ASSERT( reject_endpoints_color_bbox_sse2(vqendpoint.palette,&(pblock->color_bbox_lo),EARLY_OUT_COLOR_ENDPOINT_DISTANCE*lambda)
-					== reject_endpoints_color_bbox_scalar(vqendpoint.palette,&(pblock->color_bbox_lo),EARLY_OUT_COLOR_ENDPOINT_DISTANCE*lambda) );
+				RR_ASSERT( reject_endpoints_color_bbox_sse2(vqendpoint.palette,&(pblock->color_bbox_lo),config.early_out_color_endpoint_distance*lambda)
+					== reject_endpoints_color_bbox_scalar(vqendpoint.palette,&(pblock->color_bbox_lo),config.early_out_color_endpoint_distance*lambda) );
 				#endif
 
 				// palette[0],[1] are endpoints
 				//	color_bbox is only the RGB non-black part
 
-				if ( reject_endpoints_color_bbox(vqendpoint.palette,&(pblock->color_bbox_lo),EARLY_OUT_COLOR_ENDPOINT_DISTANCE*lambda) )
+				if ( reject_endpoints_color_bbox(vqendpoint.palette,&(pblock->color_bbox_lo),config.early_out_color_endpoint_distance*lambda) )
 				{
 					continue;
 				}	
@@ -1209,7 +1333,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 				// @@ could be useful as an early out acceleration?
 				//	hurts vcdiff a little, helps rmse, what's the speed effect?
 				//	 -> yes helps speed quite a lot
-				if ( ssd < best_ssd + EARLY_OUT_ENDPOINTS_SSD_MAX_INCREASE_SCALED_BY_LAMBDA*lambda )
+				if ( ssd < best_ssd + config.early_out_endpoints_ssd_max_increase_scaled_by_lambda*lambda )
 				{					
 					// in this loop we measure cost of indices
 					//	so we will favor repeated indices if we chance upon them
@@ -1441,7 +1565,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 			
 			if ( best_p >= endpoint_vq_palette_num_to_search )
 			{
-				update_mtf_window(best_p,lz_window,lz_window_size,MAX_NUM_ADDED_ENTRIES_TO_TRY_ENDPOINTS);
+				update_mtf_window(best_p,lz_window.data(),lz_window_size,config.max_num_added_entries_to_try_endpoints );
 			}
 		}
 		
@@ -1507,7 +1631,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 			
 			// vq_reduce also changes blocks->cur
 			vector<dword_and_count> index_counting_reduced;
-			bc1_indices_vq_reduce(&index_counting_reduced,index_counting,lambda,nblocks,blocks.data(),pal_mode);
+			bc1_indices_vq_reduce(&index_counting_reduced,index_counting,lambda,nblocks,blocks.data(),pal_mode,config);
 			
 			index_counting.swap(index_counting_reduced);
 			
@@ -1545,7 +1669,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		}
 		
 		{
-		SIMPLEPROFILE_SCOPE(indices_pass);
+		SIMPLEPROFILE_SCOPE_N(bc1rd_indices,vqindices.size32());
 		
 		int index_vq_palette_size_before = vqindices.size32();
 		//rrprintfvar(index_vq_palette_size_before);
@@ -1558,9 +1682,10 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		//		uses VQD instead of SSD
 		//		uses codelen for J instead of very rough estimate
 
-		int index_vq_palette_num_to_search = RR_MIN(index_vq_palette_size_before,INDEX_VQ_PALETTE_SEARCH_LIMIT);
+		int index_vq_palette_num_to_search = RR_MIN(index_vq_palette_size_before,config.index_vq_palette_search_limit);
 		
-		int lz_window[MAX_NUM_ADDED_ENTRIES_TO_TRY_INDICES];
+		//int lz_window[config.max_num_added_entries_to_try_indices];
+		vector<int> lz_window; lz_window.resize(config.max_num_added_entries_to_try_indices);
 		int lz_window_size = 0;
 		
 		// for each block
@@ -1865,7 +1990,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 			
 			if ( best_p >= index_vq_palette_num_to_search )
 			{
-				update_mtf_window(best_p,lz_window,lz_window_size,MAX_NUM_ADDED_ENTRIES_TO_TRY_INDICES);
+				update_mtf_window(best_p,lz_window.data(),lz_window_size,config.max_num_added_entries_to_try_indices);
 			}
 			
 		}
@@ -1909,7 +2034,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 	
 	#if 1
 	{
-		SIMPLEPROFILE_SCOPE(final_matrix);
+		SIMPLEPROFILE_SCOPE_N(bc1rd_final_matrix,nblocks);
 		
 		/*
 		
@@ -1958,19 +2083,13 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		vq_codelen_help index_codelen_help;
 		setup_palette_and_vq_codelen_help(&index_codelen_help,index_counting,nblocks,eIndices,eNoReduce);
 
-		// start with larger matrix dim than I want :
-		#define FINAL_PASS_MATRIX_DIM_INITIAL	200  // 40k @@ ?? initial candidate set for codelen doesn't have a huge effect on speed
+		int num_endpoints = RR_MIN(endpoint_counting.size32(), config.final_pass_matrix_dim_initial);
+		int num_indices = RR_MIN(index_counting.size32(), config.final_pass_matrix_dim_initial);
 
-		// $$$$ these are a fine speed-quality tradeoff, needs careful tweak :
-		//#define FINAL_PASS_MATRIX_DIM_SEARCH	110
-		#define FINAL_PASS_MATRIX_DIM_SEARCH	100  // 10k @@ ??
-		//#define FINAL_PASS_MATRIX_DIM_SEARCH	90  // 8k you can go lower, it hurts quality obvious but saves time
-		
-		int num_endpoints = RR_MIN(endpoint_counting.size32(), FINAL_PASS_MATRIX_DIM_INITIAL);
-		int num_indices = RR_MIN(index_counting.size32(), FINAL_PASS_MATRIX_DIM_INITIAL);
-
-		F32 codelen_endpoints[FINAL_PASS_MATRIX_DIM_INITIAL];
-		F32 codelen_indices[FINAL_PASS_MATRIX_DIM_INITIAL];
+		//F32 codelen_endpoints[config.final_pass_matrix_dim_initial];
+		//F32 codelen_indices[config.final_pass_matrix_dim_initial];
+		vector<F32> codelen_endpoints(config.final_pass_matrix_dim_initial,0.f);
+		vector<F32> codelen_indices(config.final_pass_matrix_dim_initial,0.f);
 
 		for LOOP(epi,num_endpoints)
 		{
@@ -2010,7 +2129,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 		// now reduce matrix size to smaller
 		//	with just the top (lowest) codelens :
 		
-		int num_pairs = RR_MIN(FINAL_PASS_MATRIX_DIM_SEARCH*FINAL_PASS_MATRIX_DIM_SEARCH,pairs.size32());
+		int num_pairs = RR_MIN(config.final_pass_matrix_dim_search*config.final_pass_matrix_dim_search,pairs.size32());
 		pairs.resize(num_pairs);
 		
 		// decompress them to colors
@@ -2194,7 +2313,7 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 	
 	#if 1
 	{
-		SIMPLEPROFILE_SCOPE(final_optimize);
+		SIMPLEPROFILE_SCOPE(bc1rd_final_optimize);
 	
 		// now take the set of blocks assigned to each VQ entry
 		//	and re-find the indexes/endpoints that optimize for that set of blocks
@@ -2213,24 +2332,21 @@ bool rrDXT1_VQ_Single(BlockSurface * to_blocks,
 	//=========================================================
 	// put to output surface :
 
-	// we set up "to" to the *true* width and height
-	//	it will be allocated to the next multiple of 4
-	// (Alloc is a nop if already done)
-	//if ( ! rrSurface_Alloc(to_dxt1Surface,from->width,from->height,rrPixelFormat_BC1) )
-	//	return false;
-	
-	for LOOP(bi,nblocks)
 	{
-		U8 * outPtr = BlockSurface_Seek(to_blocks,bi);
-		
-		const rrDXT1_VQ_Block * pblock = &blocks[bi];
+		SIMPLEPROFILE_SCOPE_N(bc1rd_emit_output,nblocks);
+		for LOOP(bi,nblocks)
+		{
+			U8 * outPtr = BlockSurface_Seek(to_blocks,bi);
 
-		if ( pal_mode == rrDXT1PaletteMode_Alpha )
-			RR_ASSERT( DXT1_OneBitTransparent_Mask_Same(pblock->block_1bt_mask,pblock->cur) );
-				
-		memcpy(outPtr,&(pblock->cur),sizeof(pblock->cur));
+			const rrDXT1_VQ_Block * pblock = &blocks[bi];
+
+			if ( pal_mode == rrDXT1PaletteMode_Alpha )
+				RR_ASSERT( DXT1_OneBitTransparent_Mask_Same(pblock->block_1bt_mask,pblock->cur) );
+
+			memcpy(outPtr,&(pblock->cur),sizeof(pblock->cur));
+		}
 	}
-		
+
 	return true;
 }
 
@@ -3067,7 +3183,7 @@ static RADFORCEINLINE Vec128 DeltaSqrRGBA_SSE2(
 	Vec128 diff_br16 = _mm_sub_epi16(y_br16, x_br16); // db, dr
 	Vec128 diff_ga16 = _mm_sub_epi16(y_ga16, x_ga16); // dg, da
 	
-	// @@@@ NOTE :
+	// NOTE :
 	//	we currently do not do a penalty like rrColor32BGRA_DeltaSqrRGBA_1BT ?
 	// -> could easily scale up diff_ga16 here
 	// double the A difference in diff_ga16 before squaring -> 4* in the deltasqr
@@ -3399,9 +3515,10 @@ static U32 AnyIndexD_add_then_find_indices(AnyIndexD * to, const AnyIndexD & fm,
 static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const vector<dword_and_count> & total_indices_in, 
 							int lambda, int nblocks_total ,
 							rrDXT1_VQ_Block * blocks_in,
-							rrDXT1PaletteMode pal_mode)
+							rrDXT1PaletteMode pal_mode,
+							const rrDXT1_VQ_Config & config)
 {
-	SIMPLEPROFILE_SCOPE(indices_vq_reduce);
+	SIMPLEPROFILE_SCOPE_N(bc1rd_indices_educe,total_indices_in.size32());
 	
 	RR_ASSERT( lambda > 0 );
 
@@ -3411,6 +3528,14 @@ static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const v
 	// indices_in should be sorted by count already :
 	//RR_ASSERT( indices_in[0].count >= indices_in.back().count );
 	int indices_in_count = total_indices_in.size32();
+
+	// If number of unique indices is already tiny, there's no point trying anything here;
+	// indices are already as redundant as they're going to get.
+	if ( indices_in_count <= 4 )
+	{
+		*indices_out = total_indices_in;
+		return;
+	}
 	
 	vector<index_vq_entry> entries;
 	entries.reserve( indices_in_count );
@@ -3520,7 +3645,7 @@ static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const v
 	//	 pretty decent way to trade quality for speed at the moment
 	//	-> be careful and test this on a variety of images!
 
-	U32 conservative_index_diff_limit = (EARLY_OUT_INDEX_DIFF_TIMES_LAMBDA*lambda + EARLY_OUT_INDEX_DIFF_PLUS_CONSTANT)/10; // lambda scaled up by 10
+	U32 conservative_index_diff_limit = (config.early_out_index_diff_times_lambda*lambda + config.early_out_index_diff_plus_constant)/10; // lambda scaled up by 10
 	
 	// if distortion increases by this much, it won't be a J win
 	S32 rate_savings_32_bits = ( 32 * vq_codelen_one_bit ); // 512
@@ -3627,22 +3752,23 @@ static void bc1_indices_vq_reduce(vector<dword_and_count> * indices_out, const v
 					break;
 				#endif
 
-				#if 1
-				// fast early out with index diff :
-				//
-				// on "red_blue" it's much better to NOT do this
-				//	(and doesn't hurt any speed)
-				// on the rest of the images this is good (quality nop and speed savings)
+				if ( config.do_index_diff_early_out )
+				{
+					// fast early out with index diff :
+					//
+					// on "red_blue" it's much better to NOT do this
+					//	(and doesn't hurt any speed)
+					// on the rest of the images this is good (quality nop and speed savings)
 
-				U32 index_diff = unpacked_16x8_diff(entries[fm].unpacked_16x8, entries[to].unpacked_16x8 );
+					U32 index_diff = unpacked_16x8_diff(entries[fm].unpacked_16x8, entries[to].unpacked_16x8 );
 
-				// meh
-				//if ( entries[to].is3c != entries[fm].is3c ) index_diff += 2;
+					// meh
+					//if ( entries[to].is3c != entries[fm].is3c ) index_diff += 2;
 
-				index_diff *= entries[fm].count;
-				if ( index_diff > conservative_index_diff_limit )
-					continue;
-				#endif
+					index_diff *= entries[fm].count;
+					if ( index_diff > conservative_index_diff_limit )
+						continue;
+				}
 
 				// all the time is here :
 				//SIMPLEPROFILE_SCOPE(indices_vq_reduce_make_heap_inner);

@@ -3,41 +3,41 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31624.102
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Oodle", "Oodle\Oodle.vcxproj", "{C2845616-EBFC-40DE-814E-17D551F29043}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Oodle", "Oodle\Oodle.vcxproj", "{719C2D30-BEBA-4B05-B675-725A568C9A85}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		OodleCore|Win32 = OodleCore|Win32
 		OodleCore|x64 = OodleCore|x64
-		OodleCore|x86 = OodleCore|x86
+		OodleNetwork|Win32 = OodleNetwork|Win32
 		OodleNetwork|x64 = OodleNetwork|x64
-		OodleNetwork|x86 = OodleNetwork|x86
+		OodleNetworkAndTexture|Win32 = OodleNetworkAndTexture|Win32
 		OodleNetworkAndTexture|x64 = OodleNetworkAndTexture|x64
-		OodleNetworkAndTexture|x86 = OodleNetworkAndTexture|x86
+		OodleTexture|Win32 = OodleTexture|Win32
 		OodleTexture|x64 = OodleTexture|x64
-		OodleTexture|x86 = OodleTexture|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleCore|x64.ActiveCfg = OodleCore|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleCore|x64.Build.0 = OodleCore|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleCore|x86.ActiveCfg = OodleCore|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleCore|x86.Build.0 = OodleCore|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetwork|x64.ActiveCfg = OodleNetwork|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetwork|x64.Build.0 = OodleNetwork|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetwork|x86.ActiveCfg = OodleNetwork|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetwork|x86.Build.0 = OodleNetwork|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetworkAndTexture|x64.ActiveCfg = OodleNetworkAndTexture|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetworkAndTexture|x64.Build.0 = OodleNetworkAndTexture|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetworkAndTexture|x86.ActiveCfg = OodleNetworkAndTexture|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleNetworkAndTexture|x86.Build.0 = OodleNetworkAndTexture|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleTexture|x64.ActiveCfg = OodleTexture|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleTexture|x64.Build.0 = OodleTexture|x64
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleTexture|x86.ActiveCfg = OodleTexture|Win32
-		{C2845616-EBFC-40DE-814E-17D551F29043}.OodleTexture|x86.Build.0 = OodleTexture|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleCore|Win32.ActiveCfg = OodleCore|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleCore|Win32.Build.0 = OodleCore|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleCore|x64.ActiveCfg = OodleCore|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleCore|x64.Build.0 = OodleCore|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetwork|Win32.ActiveCfg = OodleNetwork|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetwork|Win32.Build.0 = OodleNetwork|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetwork|x64.ActiveCfg = OodleNetwork|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetwork|x64.Build.0 = OodleNetwork|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetworkAndTexture|Win32.ActiveCfg = OodleNetworkAndTexture|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetworkAndTexture|Win32.Build.0 = OodleNetworkAndTexture|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetworkAndTexture|x64.ActiveCfg = OodleNetworkAndTexture|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleNetworkAndTexture|x64.Build.0 = OodleNetworkAndTexture|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleTexture|Win32.ActiveCfg = OodleTexture|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleTexture|Win32.Build.0 = OodleTexture|Win32
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleTexture|x64.ActiveCfg = OodleTexture|x64
+		{719C2D30-BEBA-4B05-B675-725A568C9A85}.OodleTexture|x64.Build.0 = OodleTexture|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {37526B46-A3FB-4385-87EB-23B9DEE50A16}
+		SolutionGuid = {34696CD9-BBFD-4120-B57C-371860F05E05}
 	EndGlobalSection
 EndGlobal

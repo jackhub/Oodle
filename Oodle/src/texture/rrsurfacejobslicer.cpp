@@ -11,14 +11,28 @@
 #include "templates/rrvector_st.h"
 #include "rrstackarray.h"
 #include "texbase.h"
+#include <limits.h>
+
+using namespace oo2tex;
 
 RR_NAMESPACE_START
 
 //=================================================================================================
 
+// a * b / denom, with extra range
+static int mul_div(int a, int b, int denom)
+{
+	S64 prod = (S64)a * b;
+	S64 quot = prod / denom;
+	RR_ASSERT( quot >= INT_MIN && quot <= INT_MAX );
+
+	return (int)quot;
+}
+
 int get_job_count_for_worker_count(int num_workers, int num_items, int min_items )
 {
-	if ( num_workers <= 1 ) return 1;
+	RR_ASSERT(num_workers != OODLEJOB_DEFAULT);
+	if ( num_workers <= 1 ) return 1; // includes OODLEJOBS_DISABLE
 	if ( num_items <= min_items ) return 1;
 	
 	// scale up num_jobs so we get several per worker
@@ -83,7 +97,7 @@ rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_worker
 {
 	int num_block_rows = (from->height+3)/4;
 	
-	if ( num_workers <= 0 ) num_workers = OodlePlugins_GetJobTargetParallelism();
+	if ( num_workers == OODLEJOB_DEFAULT ) num_workers = OodlePlugins_GetJobTargetParallelism();
 	
 	if ( num_block_rows < num_workers || num_workers <= 1 )
 	{
@@ -113,7 +127,7 @@ rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_worker
 	
 	for LOOP(j,num_jobs)
 	{
-		int to_block_y = ((j+1) * num_block_rows ) / num_jobs;
+		int to_block_y = mul_div(j + 1, num_block_rows, num_jobs);
 		
 		if ( j == num_jobs-1 )
 			RR_ASSERT( to_block_y == num_block_rows );
@@ -149,7 +163,7 @@ rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_worker
 		
 		last_block_y = to_block_y;
 		
-		job_data[j].handle = OodleJob_Run(rrSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr );
+		job_data[j].handle = OodleJob_Run_MaybeSingleThreaded(rrSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr, num_workers );
 	}
 		
 	RR_STACK_ARRAY(job_handles,U64,num_jobs);
@@ -159,7 +173,8 @@ rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_worker
 		job_handles[j] = job_data[j].handle;
 	}
 	
-	OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);	
+	if ( num_workers != OODLEJOB_DISABLE)
+		OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);
 	
 	rrbool ret = true;
 	for LOOP(j,num_jobs)
@@ -171,7 +186,7 @@ rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_worker
 	return ret;
 }
 
-rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int rect_w,int rect_h,void * jobify_user_ptr,t_JobSlicer_Func * pfunc,void * pdata)
+rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int rect_w,int rect_h,int num_workers,void * jobify_user_ptr,t_JobSlicer_Func * pfunc,void * pdata)
 {
 	int num_cols = (from->width + rect_w-1) / rect_w;
 	int num_rows = (from->height + rect_h-1) / rect_h;
@@ -224,7 +239,7 @@ rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int
 			job_data[j].pfunc = pfunc;
 			job_data[j].pdata = pdata;
 			
-			job_data[j].handle = OodleJob_Run(rrSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr );
+			job_data[j].handle = OodleJob_Run_MaybeSingleThreaded(rrSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr, num_workers );
 			j++;
 		}
 	}
@@ -239,7 +254,8 @@ rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int
 		job_handles[j] = job_data[j].handle;
 	}
 	
-	OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);	
+	if ( num_workers != OODLEJOB_DISABLE)
+		OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);
 	
 	rrbool ret = true;
 	for LOOP(j,num_jobs)
@@ -270,7 +286,8 @@ rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int n
 {
 	RR_ASSERT( to->count == from->count );
 
-	if ( num_workers <= 0 ) num_workers = OodlePlugins_GetJobTargetParallelism();
+	if ( num_workers == OODLEJOB_DEFAULT )
+		num_workers = OodlePlugins_GetJobTargetParallelism();
 
 	int count = from->count;
 	
@@ -284,7 +301,7 @@ rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int n
 	
 	for LOOP(j,num_jobs)
 	{
-		int to_count = ((j+1) * count ) / num_jobs;
+		int to_count = mul_div(j + 1, count, num_jobs);
 		
 		// start with success
 		job_data[j].func_ret = true;
@@ -304,7 +321,7 @@ rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int n
 		
 		last_count = to_count;
 	
-		job_data[j].handle = OodleJob_Run(BlockSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr );
+		job_data[j].handle = OodleJob_Run_MaybeSingleThreaded(BlockSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr, num_workers );
 	}
 		
 	RR_ASSERT( last_count == count );
@@ -316,7 +333,8 @@ rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int n
 		job_handles[j] = job_data[j].handle;
 	}
 	
-	OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);	
+	if ( num_workers != OODLEJOB_DISABLE)
+		OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);
 	
 	rrbool ret = true;
 	for LOOP(j,num_jobs)
@@ -328,10 +346,13 @@ rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int n
 	return ret;
 }
 
-rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface * from,void * jobify_user_ptr,t_BlockJobSlicer_Func * pfunc,void * pdata,
+rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface * from,int num_workers,void * jobify_user_ptr,t_BlockJobSlicer_Func * pfunc,void * pdata,
 											int goal_num_blocks_per_slice)
 {
 	RR_ASSERT( to->count == from->count );
+
+	if ( num_workers == OODLEJOB_DEFAULT )
+		num_workers = OodlePlugins_GetJobTargetParallelism();
 
 	// cut chunks at 256 KB byte boundaries in the [to] block format
 	//	then within those chunks, cut up to goal_num_blocks_per_slice
@@ -380,7 +401,7 @@ rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface 
 		
 		for LOOP(i,slices_this_chunk)
 		{
-			int to_count = start_of_chunk + ((i+1) * blocks_this_chunk ) / slices_this_chunk;
+			int to_count = start_of_chunk + mul_div(i + 1, blocks_this_chunk, slices_this_chunk);
 			
 			int j = job_data.size32();
 			job_data.push_back();
@@ -417,11 +438,12 @@ rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface 
 		
 	for LOOP(j,num_jobs)
 	{
-		U64 h = OodleJob_Run(BlockSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr );
+		U64 h = OodleJob_Run_MaybeSingleThreaded(BlockSurfaceJobSlicer_Job, &(job_data[j]), 0,0, jobify_user_ptr, num_workers );
 		job_handles[j] = job_data[j].handle = h;
 	}
-	
-	OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);	
+
+	if ( num_workers != OODLEJOB_DISABLE)
+		OodleJob_WaitAll(job_handles,num_jobs,jobify_user_ptr);
 	
 	rrbool ret = true;
 	for LOOP(j,num_jobs)

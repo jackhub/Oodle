@@ -183,8 +183,19 @@ rrbool rrSurface_Blit_Slow( rrSurface * to, const rrSurface * fm )
 				for(int x=0;x<w;x+=CHUNK_SIZE)
 				{
 					int count = RR_MIN(w - x, CHUNK_SIZE);
-					rrPixelFormat_GetColors4F(fmPtr, fm->pixelFormat, colors, count);
-					rrPixelFormat_PutColors4F(toPtr, to->pixelFormat, colors, count);
+					if (to->pixelFormat == rrPixelFormat_4_F32) // only get?
+					{
+						rrPixelFormat_GetColors4F(fmPtr, fm->pixelFormat, (rrColor4F *)toPtr, count);
+					}
+					else if (fm->pixelFormat == rrPixelFormat_4_F32) // only put?
+					{
+						rrPixelFormat_PutColors4F(toPtr, to->pixelFormat, (const rrColor4F *)fmPtr, count);
+					}
+					else // general case
+					{
+						rrPixelFormat_GetColors4F(fmPtr, fm->pixelFormat, colors, count);
+						rrPixelFormat_PutColors4F(toPtr, to->pixelFormat, colors, count);
+					}
 					
 					fmPtr += fmBpp * count;
 					toPtr += toBpp * count;

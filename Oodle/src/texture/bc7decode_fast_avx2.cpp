@@ -9,22 +9,11 @@
 #include "newlz_simd.h"
 #include "bc67format.h"
 #include "bc7decode_fast.h"
-#include "vec128.inl"
+#include "vec256.inl"
 
 #ifdef DO_BUILD_AVX2
 
-#include <immintrin.h>
-
 OODLE_NS_START
-
-static RADFORCEINLINE __m256i load256a(const void * ptr) { return _mm256_load_si256((const __m256i *)ptr); }
-static RADFORCEINLINE __m256i load256u(const void * ptr) { return _mm256_loadu_si256((const __m256i *)ptr); }
-static RADFORCEINLINE void store256u(void * ptr, const __m256i& v)	{ _mm256_storeu_si256((__m256i *)ptr, v); }
-
-static RADFORCEINLINE __m256i broadcast128to256(const __m128i& v)	{ return _mm256_inserti128_si256(_mm256_castsi128_si256(v), v, 1); }
-
-template<int x,int y,int z,int w>
-static RADFORCEINLINE __m256i shuffle32(const __m256i& v)			{ return _mm256_shuffle_epi32(v, _MM_SHUFFLE(w,z,y,x)); }
 
 #define rep7x(a) (a),(a),(a),(a),(a),(a),(a)
 #define rep8x(a) (a),rep7x(a)
@@ -149,7 +138,7 @@ static RADFORCEINLINE void avx2_interpolate_one_subset_twoind(U8 * out_rgba, U32
 	__m256i lerpf16_shuf1 = _mm256_add_epi8(lerpf16_shuf0, _mm256_set1_epi8(4));
 
 	// Shuffle the endpoints around so we have the "low" and "high" end separated out
-	__m256i endpoints16_256 = broadcast128to256(endpoints16);
+	__m256i endpoints16_256 = broadcast128_256(endpoints16);
 	__m256i lo16 = _mm256_unpacklo_epi64(endpoints16_256, endpoints16_256);
 	__m256i hi16 = _mm256_unpackhi_epi64(endpoints16_256, endpoints16_256);
 
@@ -182,14 +171,14 @@ static RADFORCEINLINE void avx2_interpolate_one_subset_twoind(U8 * out_rgba, U32
 static RADFORCEINLINE void avx2_interpolate_two_subset(U8 * out_rgba, const BC67Partition * partition, const Vec128 &lerpf8, const Vec128 &lo16, const Vec128 &hi16)
 {
 	// Set up for interpolation
-	__m256i lo16_256 = broadcast128to256(lo16);
-	__m256i diff16_256 = broadcast128to256(_mm_sub_epi16(lo16, hi16));
+	__m256i lo16_256 = broadcast128_256(lo16);
+	__m256i diff16_256 = broadcast128_256(_mm_sub_epi16(lo16, hi16));
 
 	// Select the values for the respective subsets
-	__m256 lo16_subset0 = _mm256_castsi256_ps(shuffle32<0,1,0,1>(lo16_256));
-	__m256 lo16_subset1 = _mm256_castsi256_ps(shuffle32<2,3,2,3>(lo16_256));
-	__m256 diff16_subset0 = _mm256_castsi256_ps(shuffle32<0,1,0,1>(diff16_256));
-	__m256 diff16_subset1 = _mm256_castsi256_ps(shuffle32<2,3,2,3>(diff16_256));
+	__m256 lo16_subset0 = _mm256_castsi256_ps(shuffle32in128<0,1,0,1>(lo16_256));
+	__m256 lo16_subset1 = _mm256_castsi256_ps(shuffle32in128<2,3,2,3>(lo16_256));
+	__m256 diff16_subset0 = _mm256_castsi256_ps(shuffle32in128<0,1,0,1>(diff16_256));
+	__m256 diff16_subset1 = _mm256_castsi256_ps(shuffle32in128<2,3,2,3>(diff16_256));
 
 	// Shuffle for low/high lerp factors
 	// replicates them 4x each and also expands to 16 bits by left-shifting by 8
@@ -211,7 +200,7 @@ static RADFORCEINLINE void avx2_interpolate_two_subset(U8 * out_rgba, const BC67
 	const __m256i subset_shift_2 = _mm256_setr_epi32(15,15, 13,13,  7, 7,  5, 5);
 	const __m256i subset_shift_3 = _mm256_setr_epi32(11,11,  9, 9,  3, 3,  1, 1);
 
-	const __m256i lerpf8_256 = broadcast128to256(lerpf8);
+	const __m256i lerpf8_256 = broadcast128_256(lerpf8);
 
 	// Determine masks for whether a pixel is in subset 1
 	// this puts the relevant bit in the MSB of every DWord, to be used by VBLENDVPS
@@ -487,13 +476,13 @@ void avx2_decode_mode6(U8 * out_rgba, const U8 * block_bits)
 	Vec128 lerpf8 = sse4_decode_mode6_inds(block128);
 
 	// Shuffle the endpoints around so we have the "low" and "high" end separated out
-	__m256i endpoints256 = broadcast128to256(endpoints);
+	__m256i endpoints256 = broadcast128_256(endpoints);
 	__m256i lo16 = _mm256_unpacklo_epi64(endpoints256, endpoints256);
 	__m256i hi16 = _mm256_unpackhi_epi64(endpoints256, endpoints256);
 
 	// Set up for interpolation
 	__m256i diff16 = _mm256_sub_epi16(lo16, hi16); // yes, lo-hi!
-	__m256i lerpf256 = broadcast128to256(lerpf8);
+	__m256i lerpf256 = broadcast128_256(lerpf8);
 
 	// Shuffle for low/high lerp factors
 	// replicates them 4x each and also expands to 16 bits by left-shifting by 8

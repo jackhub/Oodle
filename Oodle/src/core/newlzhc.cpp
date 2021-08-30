@@ -492,12 +492,6 @@ struct newLZHC_LOs_Indir
 #define newLZHC_dec_LOs_MTF(lasts,index)		lasts.MTF(index)
 #define newLZHC_dec_LOs_Add(lastoffsets,above)	lastoffsets.offsets[lastoffsets.mtf_state >> (NEWLZHC_NUM_LAST_OFFSETS*4)] = above
 
-#elif defined(DO_SSE4_ALWAYS) 
-
-// NOTE(fg): another attempt at doing it indirect; looking awesome
-
-// in newlzhc_sse4.cpp
-
 #else
 
 #define newLZHC_dec_LOs							newLZHC_LOs
@@ -1169,7 +1163,9 @@ static SINTa newLZHC_encode_chunk(const newlz_vtable * vtable,
 	int parse_end_pos = chunk_len - NEWLZHC_CHUNK_NO_MATCH_ZONE;
 	// @@@@ ?? is pos == parse_end_pos okay?
 	
-	newLZHC_LOs lastoffsets;
+	// NOTE(fg): LO array crossing cache lines is a regular source of perf
+	// regressions
+	RAD_ALIGN(newLZHC_LOs, lastoffsets, 64);
 	lastoffsets.Reset();
 
 	// start at pos 1 :
@@ -2767,7 +2763,7 @@ static SINTa newLZHC_decode_chunk_phase1(
 	// 4 array headers * 3 byte length = 12 bytes minimum
 	//	+ offsets varbits 1 byte minimum = 13
 	// (this also protects the first-8 raw byte read)
-	if ( comp_ptr+13 > chunk_comp_end )
+	if ( rrPtrDiff(chunk_comp_end - comp_ptr) < 13)
 		return -1;
 			
 	//---------------------------------------------
@@ -3391,7 +3387,7 @@ S32 Leviathan_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 q
 	decomp_len; // unused
 
 	rrPrintf_v2("DBLOCK : %d : %d : %d\n",pos_since_reset,decomp_len,quantumCompLen);
-		
+
 	//SIMPLEPROFILE_SCOPE_N(newLZHC_decode,decomp_len);
 	
 	U8 * scratch_ptr = U8_void(scratch);
@@ -3416,8 +3412,7 @@ S32 Leviathan_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 q
 		
 		// minimum length of a chunk is 4 bytes
 		//	3 byte comp len header + 1 byte payload
-		if ( compPtr+4 > compEnd )
-		//if ( compPtr+4 >= compEnd ) // <- BUG was this
+		if ( 4 > rrPtrDiff( compEnd - compPtr ) )
 			return -1;
 		
 		SINTa chunk_comp_len = RR_GET24_BE_OVERRUNOK(compPtr);
@@ -3434,11 +3429,9 @@ S32 Leviathan_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 q
 			compPtr += 3;
 			
 			rrPrintf_v2("CHUNK : %d : %d\n",chunk_len,chunk_comp_len);
-		
-			const U8 * chunk_comp_end = compPtr + chunk_comp_len;
-			if ( chunk_comp_end > compEnd )
+
+			if ( chunk_comp_len > compEnd - compPtr )
 			{
-				
 				#if 0
 				
 				// force it to take truncated data :
@@ -3455,7 +3448,9 @@ S32 Leviathan_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 q
 				
 				#endif
 			}
-		
+
+			const U8 * chunk_comp_end = compPtr + chunk_comp_len;
+
 			if ( chunk_comp_len >= chunk_len )
 			{			
 				//raw 

@@ -18,27 +18,27 @@ MANGLE(oodle_newLZ_huff6_a64_kern):
 		.cfi_startproc
 .L0:
 		ldp		x3, x6, [x0, #48]
-		stp		x19, x20, [sp, #-80]!
-		mov		x4, #0
-		mov		x5, #0
-		mov		x7, #0
-		mov		x8, #0
-		mov		x10, #0
 		ldp		x9, x12, [x0, #64]
-		stp		x21, x22, [sp, #16]
-		mov		x21, #0
-		mov		x11, #0
-		mov		x13, #0
-		mov		x14, #0
-		mov		x16, #0
+		stp		x19, x20, [sp, #-80]!
 		ldp		x15, x19, [x0, #80]
+		mov		x4, #0
+		stp		x21, x22, [sp, #16]
 		stp		x23, x24, [sp, #32]
-		mov		x17, #0
-		mov		x20, #0
 		ldp		x22, x23, [x0]
 		stp		x25, x26, [sp, #48]
 		stp		x27, x28, [sp, #64]
 		ldr		x28, [x0, #24]
+		mov		x21, #0
+		mov		x5, #0
+		mov		x7, #0
+		mov		x8, #0
+		mov		x10, #0
+		mov		x11, #0
+		mov		x13, #0
+		mov		x14, #0
+		mov		x16, #0
+		mov		x17, #0
+		mov		x20, #0
 		sub		x2, x6, x9								// in1 - in2
 		sub		x28, x28, x23							// nbytesleft = decend1 - decptr[1]
 		subs	xzr, x28, #15
@@ -54,224 +54,234 @@ MANGLE(oodle_newLZ_huff6_a64_kern):
 		sub		x28, x28, #15
 		sub		x6, x6, #8
 		sub		x15, x15, #8
-		sub		x22, x22, #15
-		sub		x23, x23, #15
+		sub		x22, x22, #3
+		sub		x23, x23, #3
 		.align	4
 .L5: // Main decode loop body
-		ldr		x24, [x3]								// refill 0 next
 		ldr		x2, [x9]								// refill 2 next
 		ldr		x25, [x6]								// refill 1 next
+		ldr		x24, [x3]								// refill 0 next
 		subs	x28, x28, #15							// (nbytesleft -= TRIPLE_DECS_PER_REFILL) > 0
-		add		x22, x22, #15							// out 0 emit addr
-		add		x23, x23, #15							// out 1 emit addr
-		lslv	x24, x24, x5							// refill 0 align
+		prfum	#16, [x22, #67]							// out 0 prefetch
+		prfum	#16, [x23, #67]							// out 1 prefetch
 		lslv	x2, x2, x11								// refill 2 align
 		rev		x25, x25								// refill 1 next byte reverse
-		orr		x4, x4, x24								// refill 0 insert
-		ubfm	x24, x5, #3, #5							// refill 0 7-bytes_consumed
+		lslv	x24, x24, x5							// refill 0 align
 		orr		x10, x10, x2							// refill 2 insert
 		ubfm	x2, x11, #3, #5							// refill 2 7-bytes_consumed
 		lslv	x25, x25, x8							// refill 1 align
-		orr		x5, x5, #56								// refill 0 new bitcount
-		sub		x3, x3, x24								// refill 0 advance 1
-		ldr		x24, [x12]								// refill 3 next
+		orr		x4, x4, x24								// refill 0 insert
+		ubfm	x24, x5, #3, #5							// refill 0 7-bytes_consumed
+		orr		x11, x11, #56							// refill 2 new bitcount
 		sub		x9, x9, x2								// refill 2 advance 1
 		ldr		x2, [x19]								// refill 5 next
 		orr		x7, x7, x25								// refill 1 insert
 		ubfm	x25, x8, #3, #5							// refill 1 7-bytes_consumed
+		sub		x3, x3, x24								// refill 0 advance 1
+		ldr		x24, [x12]								// refill 3 next
+		orr		x5, x5, #56								// refill 0 new bitcount
 		orr		x8, x8, #56								// refill 1 new bitcount
-		orr		x11, x11, #56							// refill 2 new bitcount
 		add		x6, x6, x25								// refill 1 advance 1
 		ldr		x25, [x15]								// refill 4 next
 		add		x3, x3, #7								// refill 0 advance 2
 		add		x9, x9, #7								// refill 2 advance 2
 		sub		x6, x6, #7								// refill 1 advance 2
 		ccmp	x3, x9, #2, gt							// && in0 <= in2
+		prfum	#1, [x3, #71]							// refill 0 prefetch
+		prfum	#1, [x9, #71]							// refill 2 prefetch
 		ccmp	x9, x6, #2, ls							// && in2 <= in1
-		lslv	x24, x24, x14							// refill 3 align
+		prfum	#1, [x6, #-64]							// refill 1 prefetch
 		lslv	x2, x2, x21								// refill 5 align
-		orr		x13, x13, x24							// refill 3 insert
-		ubfm	x24, x14, #3, #5						// refill 3 7-bytes_consumed
+		lslv	x24, x24, x14							// refill 3 align
 		orr		x20, x20, x2							// refill 5 insert
 		ubfm	x2, x21, #3, #5							// refill 5 7-bytes_consumed
 		rev		x25, x25								// refill 4 next byte reverse
-		orr		x14, x14, #56							// refill 3 new bitcount
+		orr		x13, x13, x24							// refill 3 insert
+		ubfm	x24, x14, #3, #5						// refill 3 7-bytes_consumed
+		orr		x21, x21, #56							// refill 5 new bitcount
+		sub		x19, x19, x2							// refill 5 advance 1
+		and		x2, x10, #0x7ff							// decode 2 tab idx
+		lslv	x25, x25, x17							// refill 4 align
 		sub		x12, x12, x24							// refill 3 advance 1
 		and		x24, x4, #0x7ff							// decode 0 tab idx
-		sub		x19, x19, x2							// refill 5 advance 1
-		and		x2, x7, #0x7ff							// decode 1 tab idx
-		lslv	x25, x25, x17							// refill 4 align
 		and		x26, x13, #0x7ff						// decode 3 tab idx
+		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
 		ldrh	w24, [x1, x24, lsl #1]					// decode 0 LUT
-		ldrh	w2, [x1, x2, lsl #1]					// decode 1 LUT
 		ldrh	w26, [x1, x26, lsl #1]					// decode 3 LUT
 		orr		x16, x16, x25							// refill 4 insert
 		ubfm	x25, x17, #3, #5						// refill 4 7-bytes_consumed
+		orr		x14, x14, #56							// refill 3 new bitcount
 		orr		x17, x17, #56							// refill 4 new bitcount
-		orr		x21, x21, #56							// refill 5 new bitcount
 		add		x12, x12, #7							// refill 3 advance 2
 		add		x15, x15, x25							// refill 4 advance 1
+		and		x25, x7, #0x7ff							// decode 1 tab idx
+		and		x27, x16, #0x7ff						// decode 4 tab idx
 		add		x19, x19, #7							// refill 5 advance 2
+		prfum	#1, [x12, #71]							// refill 3 prefetch
+		ldrh	w25, [x1, x25, lsl #1]					// decode 1 LUT
+		ldrh	w27, [x1, x27, lsl #1]					// decode 4 LUT
 		sub		x15, x15, #7							// refill 4 advance 2
 		ccmp	x12, x19, #2, ls						// && in3 <= in5
+		prfum	#1, [x19, #71]							// refill 5 prefetch
+		prfum	#1, [x15, #-64]							// refill 4 prefetch
 		ccmp	x19, x15, #2, ls						// && in5 <= in4
+		lsrv	x10, x10, x2							// decode 2 consume bits
+		sub		x11, x11, x2							// decode 2 update bitc
+		sturh	w2, [x22, #4]							// out 0 emit2
+		and		x2, x20, #0x7ff							// decode 5 tab idx
 		lsrv	x4, x4, x24								// decode 0 consume bits
 		sub		x5, x5, x24								// decode 0 update bitc
-		ubfm	x24, x24, #16, #15						// out 0 first
-		lsrv	x7, x7, x2								// decode 1 consume bits
-		sub		x8, x8, x2								// decode 1 update bitc
+		rev16	w24, w24								// out 0 sym->low byte
+		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
 		lsrv	x13, x13, x26							// decode 3 consume bits
-		bfm		x24, x2, #24, #15						// out 0 insert
-		and		x2, x10, #0x7ff							// decode 2 tab idx
 		sub		x14, x14, x26							// decode 3 update bitc
-		ubfm	x26, x26, #16, #15						// out 1 first
-		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
-		lsrv	x10, x10, x2							// decode 2 consume bits
-		sub		x11, x11, x2							// decode 2 update bitc
-		bfm		x24, x2, #32, #15						// out 0 insert
-		and		x2, x16, #0x7ff							// decode 4 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 4 LUT
-		lsrv	x16, x16, x2							// decode 4 consume bits
-		sub		x17, x17, x2							// decode 4 update bitc
-		bfm		x26, x2, #24, #15						// out 1 insert
-		and		x2, x20, #0x7ff							// decode 5 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
+		rev16	w26, w26								// out 1 sym->low byte
+		sturh	w25, [x22, #3]							// out 0 emit1
+		strb	w24, [x22, #3]							// out 0 emit0
+		lsrv	x7, x7, x25								// decode 1 consume bits
+		and		x24, x4, #0x7ff							// decode 0 tab idx
+		sub		x8, x8, x25								// decode 1 update bitc
+		lsrv	x16, x16, x27							// decode 4 consume bits
+		sub		x17, x17, x27							// decode 4 update bitc
+		ldrh	w24, [x1, x24, lsl #1]					// decode 0 LUT
+		and		x25, x7, #0x7ff							// decode 1 tab idx
+		ldrh	w25, [x1, x25, lsl #1]					// decode 1 LUT
 		lsrv	x20, x20, x2							// decode 5 consume bits
 		sub		x21, x21, x2							// decode 5 update bitc
-		bfm		x26, x2, #32, #15						// out 1 insert
-		and		x2, x4, #0x7ff							// decode 0 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 0 LUT
-		lsrv	x4, x4, x2								// decode 0 consume bits
-		sub		x5, x5, x2								// decode 0 update bitc
-		bfm		x24, x2, #40, #15						// out 0 insert
-		and		x2, x7, #0x7ff							// decode 1 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 1 LUT
-		lsrv	x7, x7, x2								// decode 1 consume bits
-		sub		x8, x8, x2								// decode 1 update bitc
-		bfm		x24, x2, #48, #15						// out 0 insert
+		sturh	w2, [x23, #4]							// out 1 emit2
 		and		x2, x10, #0x7ff							// decode 2 tab idx
+		sturh	w27, [x23, #3]							// out 1 emit1
+		strb	w26, [x23, #3]							// out 1 emit0
+		and		x26, x13, #0x7ff						// decode 3 tab idx
+		and		x27, x16, #0x7ff						// decode 4 tab idx
 		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
+		ldrh	w26, [x1, x26, lsl #1]					// decode 3 LUT
+		ldrh	w27, [x1, x27, lsl #1]					// decode 4 LUT
+		lsrv	x4, x4, x24								// decode 0 consume bits
+		sub		x5, x5, x24								// decode 0 update bitc
+		rev16	w24, w24								// out 0 sym->low byte
+		lsrv	x7, x7, x25								// decode 1 consume bits
+		sub		x8, x8, x25								// decode 1 update bitc
 		lsrv	x10, x10, x2							// decode 2 consume bits
 		sub		x11, x11, x2							// decode 2 update bitc
-		bfm		x24, x2, #56, #15						// out 0 insert
-		and		x2, x13, #0x7ff							// decode 3 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 3 LUT
-		and		x25, x10, #0x7ff						// decode 2 tab idx
-		ldrh	w25, [x1, x25, lsl #1]					// decode 2 LUT
-		lsrv	x13, x13, x2							// decode 3 consume bits
-		sub		x14, x14, x2							// decode 3 update bitc
-		bfm		x26, x2, #40, #15						// out 1 insert
-		and		x2, x16, #0x7ff							// decode 4 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 4 LUT
-		lsrv	x10, x10, x25							// decode 2 consume bits
-		sub		x11, x11, x25							// decode 2 update bitc
-		ubfm	x25, x25, #16, #15						// out 0 first
-		lsrv	x16, x16, x2							// decode 4 consume bits
-		sub		x17, x17, x2							// decode 4 update bitc
-		bfm		x26, x2, #48, #15						// out 1 insert
+		sturh	w2, [x22, #7]							// out 0 emit2
 		and		x2, x20, #0x7ff							// decode 5 tab idx
+		sturh	w25, [x22, #6]							// out 0 emit1
+		strb	w24, [x22, #6]							// out 0 emit0
+		and		x24, x4, #0x7ff							// decode 0 tab idx
+		lsrv	x13, x13, x26							// decode 3 consume bits
 		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
+		ldrh	w24, [x1, x24, lsl #1]					// decode 0 LUT
+		sub		x14, x14, x26							// decode 3 update bitc
+		rev16	w26, w26								// out 1 sym->low byte
+		and		x25, x7, #0x7ff							// decode 1 tab idx
+		lsrv	x16, x16, x27							// decode 4 consume bits
+		sub		x17, x17, x27							// decode 4 update bitc
+		ldrh	w25, [x1, x25, lsl #1]					// decode 1 LUT
 		lsrv	x20, x20, x2							// decode 5 consume bits
 		sub		x21, x21, x2							// decode 5 update bitc
-		bfm		x26, x2, #56, #15						// out 1 insert
-		and		x2, x4, #0x7ff							// decode 0 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 0 LUT
-		and		x27, x20, #0x7ff						// decode 5 tab idx
-		ldrh	w27, [x1, x27, lsl #1]					// decode 5 LUT
-		lsrv	x4, x4, x2								// decode 0 consume bits
-		sub		x5, x5, x2								// decode 0 update bitc
-		bfm		x24, x2, #0, #15						// out 0 insert
-		and		x2, x7, #0x7ff							// decode 1 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 1 LUT
-		lsrv	x20, x20, x27							// decode 5 consume bits
-		sub		x21, x21, x27							// decode 5 update bitc
-		ubfm	x27, x27, #16, #15						// out 1 first
-		lsrv	x7, x7, x2								// decode 1 consume bits
-		sub		x8, x8, x2								// decode 1 update bitc
-		bfm		x24, x2, #8, #15						// out 0 final insert
-		and		x2, x13, #0x7ff							// decode 3 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 3 LUT
-		rev		x24, x24								// out 0 prepare emit
-		lsrv	x13, x13, x2							// decode 3 consume bits
-		sub		x14, x14, x2							// decode 3 update bitc
-		bfm		x26, x2, #0, #15						// out 1 insert
-		and		x2, x16, #0x7ff							// decode 4 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 4 LUT
-		lsrv	x16, x16, x2							// decode 4 consume bits
-		sub		x17, x17, x2							// decode 4 update bitc
-		bfm		x26, x2, #8, #15						// out 1 final insert
-		and		x2, x4, #0x7ff							// decode 0 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 0 LUT
-		rev		x26, x26								// out 1 prepare emit
-		lsrv	x4, x4, x2								// decode 0 consume bits
-		sub		x5, x5, x2								// decode 0 update bitc
-		bfm		x25, x2, #24, #15						// out 0 insert
-		and		x2, x7, #0x7ff							// decode 1 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 1 LUT
-		lsrv	x7, x7, x2								// decode 1 consume bits
-		sub		x8, x8, x2								// decode 1 update bitc
-		bfm		x25, x2, #32, #15						// out 0 insert
+		sturh	w2, [x23, #7]							// out 1 emit2
 		and		x2, x10, #0x7ff							// decode 2 tab idx
+		sturh	w27, [x23, #6]							// out 1 emit1
+		strb	w26, [x23, #6]							// out 1 emit0
+		and		x26, x13, #0x7ff						// decode 3 tab idx
+		and		x27, x16, #0x7ff						// decode 4 tab idx
 		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
+		ldrh	w26, [x1, x26, lsl #1]					// decode 3 LUT
+		ldrh	w27, [x1, x27, lsl #1]					// decode 4 LUT
+		lsrv	x4, x4, x24								// decode 0 consume bits
+		sub		x5, x5, x24								// decode 0 update bitc
+		rev16	w24, w24								// out 0 sym->low byte
+		lsrv	x7, x7, x25								// decode 1 consume bits
+		sub		x8, x8, x25								// decode 1 update bitc
 		lsrv	x10, x10, x2							// decode 2 consume bits
 		sub		x11, x11, x2							// decode 2 update bitc
-		bfm		x25, x2, #40, #15						// out 0 insert
-		and		x2, x13, #0x7ff							// decode 3 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 3 LUT
-		lsrv	x13, x13, x2							// decode 3 consume bits
-		sub		x14, x14, x2							// decode 3 update bitc
-		bfm		x27, x2, #24, #15						// out 1 insert
-		and		x2, x16, #0x7ff							// decode 4 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 4 LUT
-		lsrv	x16, x16, x2							// decode 4 consume bits
-		sub		x17, x17, x2							// decode 4 update bitc
-		bfm		x27, x2, #32, #15						// out 1 insert
+		sturh	w2, [x22, #10]							// out 0 emit2
 		and		x2, x20, #0x7ff							// decode 5 tab idx
+		sturh	w25, [x22, #9]							// out 0 emit1
+		strb	w24, [x22, #9]							// out 0 emit0
+		lsrv	x13, x13, x26							// decode 3 consume bits
+		sub		x14, x14, x26							// decode 3 update bitc
 		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
+		rev16	w26, w26								// out 1 sym->low byte
+		and		x24, x4, #0x7ff							// decode 0 tab idx
+		lsrv	x16, x16, x27							// decode 4 consume bits
+		sub		x17, x17, x27							// decode 4 update bitc
+		and		x25, x7, #0x7ff							// decode 1 tab idx
+		ldrh	w24, [x1, x24, lsl #1]					// decode 0 LUT
+		ldrh	w25, [x1, x25, lsl #1]					// decode 1 LUT
 		lsrv	x20, x20, x2							// decode 5 consume bits
 		sub		x21, x21, x2							// decode 5 update bitc
-		bfm		x27, x2, #40, #15						// out 1 insert
-		and		x2, x4, #0x7ff							// decode 0 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 0 LUT
-		lsrv	x4, x4, x2								// decode 0 consume bits
-		sub		x5, x5, x2								// decode 0 update bitc
-		bfm		x25, x2, #48, #15						// out 0 insert
-		and		x2, x7, #0x7ff							// decode 1 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 1 LUT
-		lsrv	x7, x7, x2								// decode 1 consume bits
-		sub		x8, x8, x2								// decode 1 update bitc
-		bfm		x25, x2, #56, #15						// out 0 insert
+		sturh	w2, [x23, #10]							// out 1 emit2
 		and		x2, x10, #0x7ff							// decode 2 tab idx
+		sturh	w27, [x23, #9]							// out 1 emit1
+		strb	w26, [x23, #9]							// out 1 emit0
+		and		x26, x13, #0x7ff						// decode 3 tab idx
+		and		x27, x16, #0x7ff						// decode 4 tab idx
 		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
+		ldrh	w26, [x1, x26, lsl #1]					// decode 3 LUT
+		ldrh	w27, [x1, x27, lsl #1]					// decode 4 LUT
+		lsrv	x4, x4, x24								// decode 0 consume bits
+		sub		x5, x5, x24								// decode 0 update bitc
+		rev16	w24, w24								// out 0 sym->low byte
+		lsrv	x7, x7, x25								// decode 1 consume bits
+		sub		x8, x8, x25								// decode 1 update bitc
 		lsrv	x10, x10, x2							// decode 2 consume bits
 		sub		x11, x11, x2							// decode 2 update bitc
-		bfm		x25, x2, #0, #15						// out 0 insert
-		and		x2, x13, #0x7ff							// decode 3 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 3 LUT
-		rev		x25, x25								// out 0 prepare emit
-		stp		x24, x25, [x22]							// out 0 emit
-		lsrv	x13, x13, x2							// decode 3 consume bits
-		sub		x14, x14, x2							// decode 3 update bitc
-		bfm		x27, x2, #48, #15						// out 1 insert
-		and		x2, x16, #0x7ff							// decode 4 tab idx
-		ldrh	w2, [x1, x2, lsl #1]					// decode 4 LUT
-		lsrv	x16, x16, x2							// decode 4 consume bits
-		sub		x17, x17, x2							// decode 4 update bitc
-		bfm		x27, x2, #56, #15						// out 1 insert
+		sturh	w2, [x22, #13]							// out 0 emit2
 		and		x2, x20, #0x7ff							// decode 5 tab idx
+		lsrv	x13, x13, x26							// decode 3 consume bits
+		sub		x14, x14, x26							// decode 3 update bitc
+		rev16	w26, w26								// out 1 sym->low byte
+		sturh	w25, [x22, #12]							// out 0 emit1
 		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
-		bfm		x27, x2, #0, #15						// out 1 insert
+		strb	w24, [x22, #12]							// out 0 emit0
+		and		x24, x4, #0x7ff							// decode 0 tab idx
+		lsrv	x16, x16, x27							// decode 4 consume bits
+		sub		x17, x17, x27							// decode 4 update bitc
+		and		x25, x7, #0x7ff							// decode 1 tab idx
+		ldrh	w24, [x1, x24, lsl #1]					// decode 0 LUT
+		ldrh	w25, [x1, x25, lsl #1]					// decode 1 LUT
 		lsrv	x20, x20, x2							// decode 5 consume bits
 		sub		x21, x21, x2							// decode 5 update bitc
-		rev		x27, x27								// out 1 prepare emit
-		stp		x26, x27, [x23]							// out 1 emit
+		sturh	w2, [x23, #13]							// out 1 emit2
+		and		x2, x10, #0x7ff							// decode 2 tab idx
+		sturh	w27, [x23, #12]							// out 1 emit1
+		strb	w26, [x23, #12]							// out 1 emit0
+		and		x26, x13, #0x7ff						// decode 3 tab idx
+		and		x27, x16, #0x7ff						// decode 4 tab idx
+		ldrh	w2, [x1, x2, lsl #1]					// decode 2 LUT
+		ldrh	w26, [x1, x26, lsl #1]					// decode 3 LUT
+		ldrh	w27, [x1, x27, lsl #1]					// decode 4 LUT
+		lsrv	x4, x4, x24								// decode 0 consume bits
+		sub		x5, x5, x24								// decode 0 update bitc
+		rev16	w24, w24								// out 0 sym->low byte
+		lsrv	x7, x7, x25								// decode 1 consume bits
+		sub		x8, x8, x25								// decode 1 update bitc
+		lsrv	x10, x10, x2							// decode 2 consume bits
+		sub		x11, x11, x2							// decode 2 update bitc
+		sturh	w2, [x22, #16]							// out 0 emit2
+		and		x2, x20, #0x7ff							// decode 5 tab idx
+		lsrv	x13, x13, x26							// decode 3 consume bits
+		sub		x14, x14, x26							// decode 3 update bitc
+		rev16	w26, w26								// out 1 sym->low byte
+		sturh	w25, [x22, #15]							// out 0 emit1
+		ldrh	w2, [x1, x2, lsl #1]					// decode 5 LUT
+		strb	w24, [x22, #15]!						// out 0 emit0
+		lsrv	x16, x16, x27							// decode 4 consume bits
+		sub		x17, x17, x27							// decode 4 update bitc
+		lsrv	x20, x20, x2							// decode 5 consume bits
+		sub		x21, x21, x2							// decode 5 update bitc
+		sturh	w2, [x23, #16]							// out 1 emit2
+		sturh	w27, [x23, #15]							// out 1 emit1
+		strb	w26, [x23, #15]!						// out 1 emit0
 		b.ls	.L5										// -> Main decode loop body
 .L6: // Post-decode
 		ubfm	x2, x5, #3, #5							// finish 0 remaining bytes
 		add		x6, x6, #8
 		add		x15, x15, #8
-		add		x22, x22, #15
-		add		x23, x23, #15
+		add		x22, x22, #3
+		add		x23, x23, #3
 		and		x5, x5, #7								// finish 0 leftover bitc
 		sub		x3, x3, x2								// finish 0 backtrack
 		ubfm	x2, x8, #3, #5							// finish 1 remaining bytes
@@ -301,11 +311,11 @@ MANGLE(oodle_newLZ_huff6_a64_kern):
 		stp		w17, w21, [x0, #136]					// bitc4/bitc5
 .L1: // return true
 		ldp		x27, x28, [sp, #64]
-		mov		x0, #1									// return val=true
 		ldp		x25, x26, [sp, #48]
 		ldp		x23, x24, [sp, #32]
 		ldp		x21, x22, [sp, #16]
 		ldp		x19, x20, [sp], #80
+		mov		x0, #1									// return val=true
 		ret		
 		FUNCTION_POST_DECL(oodle_newLZ_huff6_a64_kern)
 		.cfi_endproc

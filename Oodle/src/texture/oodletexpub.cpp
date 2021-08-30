@@ -21,6 +21,8 @@
 #include "layout.h"
 #include "templates/rrnew.h"
 
+using namespace oo2tex;
+
 /********
 
 OodleTexPub is a call layer from public API to internal calls
@@ -67,6 +69,26 @@ static void init_rrs_from_texsurf(rrSurface * rrs, const OodleTex_Surface * inpu
 	rrs->width = input->width;
 	rrs->height = input->height;
 	rrs->stride = input->rowStrideBytes;
+}
+
+static OodleTex_Err OodleTex_Entry_ValidateSurfaces(const OodleTex_Surface * surfaces, SINTa num_surfaces)
+{
+	for (SINTa i = 0; i < num_surfaces; ++i)
+	{
+		if ( surfaces[i].width < 1 || surfaces[i].width > OODLETEX_MAX_SURFACE_DIMENSION ||
+			 surfaces[i].height < 1 || surfaces[i].height > OODLETEX_MAX_SURFACE_DIMENSION )
+		{
+			rrprintf("ERROR: unsupported size on surface %zd!\n"
+				"Surface passed to Oodle Texture is %dx%d pixels, dimensions must be between 1 and %d.\n",
+				i,
+				surfaces[i].width, surfaces[i].height,
+				OODLETEX_MAX_SURFACE_DIMENSION);
+
+			return OodleTex_Err_SurfaceTooLarge;
+		}
+	}
+
+	return OodleTex_Err_OK;
 }
 
 static rrDXTCOptions dxtcoptions_from_bcnflags(OodleTex_BC to_bcn, OodleTex_BCNFlags flags)
@@ -174,6 +196,9 @@ OOFUNC1 const char * OOFUNC2 OodleTex_Err_GetName(OodleTex_Err error)
 		CASE_TO_STRING(OodleTex_Err_SurfaceSizeMismatch)
 		CASE_TO_STRING(OodleTex_Err_NoLicense_Unused)
 		CASE_TO_STRING(OodleTex_Err_BufferTooSmall)
+		CASE_TO_STRING(OodleTex_Err_SurfaceTooLarge)
+		CASE_TO_STRING(OodleTex_Err_BadUniversalTiling)
+		CASE_TO_STRING(OodleTex_Err_LayoutAndUniversalTilingIncompatible)
 	default:
 		break;
 	}
@@ -236,6 +261,20 @@ OOFUNC1 const char * OOFUNC2 OodleTex_BC_GetName(OodleTex_BC bcn)
 	}
 
 	return "unknown OodleTex_BC!";
+}
+
+OOFUNC1 const char * OOFUNC2 OodleTex_RDO_UniversalTiling_GetName(OodleTex_RDO_UniversalTiling tiling)
+{
+	switch(tiling)
+	{
+		CASE_TO_STRING(OodleTex_RDO_UniversalTiling_Disable)
+		CASE_TO_STRING(OodleTex_RDO_UniversalTiling_256KB)
+		CASE_TO_STRING(OodleTex_RDO_UniversalTiling_64KB)
+	default:
+		break;
+	}
+
+	return "unknown OodleTex_RDO_UniversalTiling!";
 }
 
 OOFUNC1 S32 OOFUNC2 OodleTex_BC_BytesPerBlock(OodleTex_BC bcn)
@@ -429,6 +468,52 @@ static bool check_buf_size(void * buf, SINTa required_size)
 
 	return true;
 }
+
+static bool OodleTex_EncodeEffortLevel_to_rrDXTCLevel(rrDXTCLevel * pdxtc_level,OodleTex_EncodeEffortLevel effort_level,rrDXTCLevel default_level)
+{
+	rrDXTCLevel dxtc_level;
+
+	switch((int)effort_level)
+	{
+	// secret levels :
+    case 1:
+		dxtc_level = rrDXTCLevel_VeryFast;
+		break;
+    case 99:
+		dxtc_level = rrDXTCLevel_Reference;
+		break;
+    case OodleTex_EncodeEffortLevel_Low:
+		dxtc_level = rrDXTCLevel_Fast;
+		break;
+    case OodleTex_EncodeEffortLevel_Normal:
+		dxtc_level = rrDXTCLevel_Slow;
+		break;
+    case OodleTex_EncodeEffortLevel_High:
+		dxtc_level = rrDXTCLevel_VerySlow;
+		break;
+    case OodleTex_EncodeEffortLevel_Default:
+		dxtc_level = default_level;
+		break;
+	default:
+		// bad value
+		return false;
+	}
+
+	*pdxtc_level = dxtc_level;
+
+	return true;
+}
+
+static int OodleTex_NumJobThreads_to_NumWorkers(int num_job_threads)
+{
+	if ( num_job_threads == OODLETEX_JOBS_DEFAULT )
+		return OODLEJOB_DEFAULT;
+
+	if ( num_job_threads == OODLETEX_JOBS_DISABLE )
+		return OODLEJOB_DISABLE;
+
+	return num_job_threads;
+}
 	
 OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_Blocks(
 	OodleTex_BC to_bcn,void * to_bcn_blocks,SINTa num_blocks,
@@ -463,37 +548,22 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_Blocks(
 		return OodleTex_Err_BufferTooSmall;
 	if ( ! check_buf_size(fm_surf.blocks,BlockSurface_GetDataSizeBytes(&fm_surf)) )
 		return OodleTex_Err_BufferTooSmall;
-	
-	if ( num_job_threads <= 0 )
+
+	if ( num_job_threads == OODLETEX_JOBS_DEFAULT )
 	{
 		// num_job_threads not given
 		num_job_threads = OodlePlugins_GetJobTargetParallelism();
+	}
+	else
+	{
+		num_job_threads = OodleTex_NumJobThreads_to_NumWorkers(num_job_threads);
 	}
 	
 	rrDXTCOptions dxtcoptions = dxtcoptions_from_bcnflags(to_bcn,flags);
 	
 	rrDXTCLevel dxtc_level;
-	
-	switch((int)effort_level)
+	if ( ! OodleTex_EncodeEffortLevel_to_rrDXTCLevel(&dxtc_level,effort_level,rrDXTCLevel_VerySlow) )
 	{
-	// secret levels :
-    case 1:
-		dxtc_level = rrDXTCLevel_VeryFast;
-		break;
-    case 99:
-		dxtc_level = rrDXTCLevel_Reference;
-		break;
-    case OodleTex_EncodeEffortLevel_Low:
-		dxtc_level = rrDXTCLevel_Fast;
-		break;
-    case OodleTex_EncodeEffortLevel_Normal:
-		dxtc_level = rrDXTCLevel_Slow;
-		break;
-    case OodleTex_EncodeEffortLevel_Default:
-    case OodleTex_EncodeEffortLevel_High:
-		dxtc_level = rrDXTCLevel_VerySlow; // <- Default
-		break;
-	default:
 		return OodleTex_Err_BadEncodeEffortLevel;
 	}
 	
@@ -525,6 +595,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_LinearSurfaces(
 	if ( err != OodleTex_Err_OK )
 		return err;
 		
+	err = OodleTex_Entry_ValidateSurfaces(from_surfaces,num_from_surfaces);
+	if ( err != OodleTex_Err_OK )
+		return err;
+
 	rrPixelFormat fm_pf = OodleTex_PixelFormat_to_rrPixelFormat(from_format);
 	if ( fm_pf == rrPixelFormat_Invalid )
 		return OodleTex_Err_BadPixelFormat;
@@ -576,22 +650,48 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_LinearSurfaces(
 //	they still RDO tiny images to make sure it doesn't fail
 // 16 blocks = a 16x16 image
 
-OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
+OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO_Ex(
 	OodleTex_BC to_bcn,void * to_bcn_blocks,SINTa num_blocks,
 	const OodleTex_Surface * from_surfaces,SINTa num_from_surfaces,OodleTex_PixelFormat from_format,
 	const OodleTex_Layout * layout,
-	int rdo_lagrange_lambda,OodleTex_BCNFlags flags,
-	OodleTex_RDO_ErrorMetric rdo_metric,
+	int rdo_lagrange_lambda,
+	const OodleTex_RDO_Options * options,
 	int num_job_threads,void * jobify_user_ptr)
 {
 	OodleTex_Err err = OodleTex_Enter();
 	if ( err != OodleTex_Err_OK )
 		return err;
 
+	static OodleTex_RDO_Options zero_options = { };
+	if ( options == NULL ) options = &zero_options;
+
+	const OodleTex_RDO_ErrorMetric rdo_metric = options->metric;
+	// effort: handled below
+	const OodleTex_BCNFlags flags = options->bcn_flags;
+	// rdo_flags: nothing currently defined
+
+	// set up rdopts
+	rrDXTCRD_Options rdopts = { };
+	rrDXTCRD_SetDefaults(&rdopts);
+	
+	rdopts.use_bc3_alpha_lambda = options->use_bc3_alpha_lambda;
+	rdopts.bc3_alpha_lambda = options->bc3_alpha_lambda;
+
+	// As of 2.9.1, default for RDO is Slow (=what we call Normal in the public API)
+	// not VerySlow
+	if ( ! OodleTex_EncodeEffortLevel_to_rrDXTCLevel(&rdopts.effort,options->effort,rrDXTCLevel_Slow) )
+	{
+		return OodleTex_Err_BadEncodeEffortLevel;
+	}
+
 	err = OodleTex_Entry_ValidateFormats(to_bcn,from_format);
 	if ( err != OodleTex_Err_OK )
 		return err;
 		
+	err = OodleTex_Entry_ValidateSurfaces(from_surfaces,num_from_surfaces);
+	if ( err != OodleTex_Err_OK )
+		return err;
+
 	rrPixelFormat to_pf = OodleTex_BC_to_rrPixelFormat(to_bcn);
 	if ( to_pf == rrPixelFormat_Invalid )
 		return OodleTex_Err_BadBCnFormat;
@@ -602,9 +702,48 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 	if ( rdo_lagrange_lambda < 0 )
 		return OodleTex_Err_NegativeLambda;
 		
-	if ( num_job_threads <= 0 )
+	if ( num_job_threads == OODLETEX_JOBS_DEFAULT )
 	{
 		num_job_threads = OodlePlugins_GetJobTargetParallelism();
+	}
+	else
+	{
+		num_job_threads = OodleTex_NumJobThreads_to_NumWorkers(num_job_threads);
+	}
+
+	// Determine universal tiling parameters
+	OodleTex_Layout universal_layout(rrPixelFormat_GetInfo(to_pf)->bytesPerBlock);
+	const OodleTex_Layout * use_layout = layout;
+	bool universal_tiling = false;
+
+	if ( options->universal_tiling != OodleTex_RDO_UniversalTiling_Disable )
+	{
+		// Layout and universal tiling are mutually exclusive
+		if ( layout )
+			return OodleTex_Err_LayoutAndUniversalTilingIncompatible;
+
+		err = universal_layout.InitUniversal(options->universal_tiling);
+		if ( err != OodleTex_Err_OK )
+			return err;
+
+		// If all passed-in surfaces are small enough to fit inside a single tile, universal tiling is a NOP, so
+		// turn it off
+		bool all_small = true;
+		for (SINTa i = 0; i < num_from_surfaces; i++)
+		{
+			if ( from_surfaces[i].width > universal_layout.m_tile_w ||
+				 from_surfaces[i].height > universal_layout.m_tile_h )
+			{
+				all_small = false;
+				break;
+			}
+		}
+
+		if ( !all_small )
+		{
+			use_layout = &universal_layout;
+			universal_tiling = true;
+		}
 	}
 		
 	// zero init of rrSurface struct has freeData = false; it's a point-at
@@ -615,7 +754,7 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 
 	if ( ! check_buf_size(to_surf.blocks,BlockSurface_GetDataSizeBytes(&to_surf)) )
 		return OodleTex_Err_BufferTooSmall;
-		
+
 	// allocate & blit into from_blocks , either from a single linear surface or from a layout
 	BlockSurfaceObj from_blocks;
 	rrSurface from_rrs_local;
@@ -643,18 +782,34 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 	if ( !layout && num_blocks != from_num_blocks )
 		return OodleTex_Err_BlockCountMismatch;
 
-	BlockSurface_AllocCopy_from_RRS_Layout(&from_blocks,from_rrs,(int)num_from_surfaces,layout);
+	BlockSurface_AllocCopy_from_RRS_Layout(&from_blocks,from_rrs,(int)num_from_surfaces,use_layout);
 
-	// this is checked and returned error code above, should be true now :
-	RR_ASSERT( from_blocks.count == num_blocks );
+	// Target surface to encode to; usually to_surf, but we encode to temp when universal tiling is on,
+	// because we need to un-tile the result
+	BlockSurface encode_to_surf = { };
+	if ( ! universal_tiling ) // no universal tiling -> straight to output
+	{
+		// this is checked and returned error code above, should be true now :
+		RR_ASSERT( from_blocks.count == num_blocks );
+		encode_to_surf = to_surf;
+	}
+	else
+	{
+		// NOTE(fg): _not_ checking the from_blocks.count for equality since in the universal
+		// tiling case, we will add padding if the texture contains one or more partially
+		// filled tiles, so instead check that it's large enough to contain all the source
+		// blocks, and allocate our dest surface to match:
+		RR_ASSERT( from_blocks.count >= num_blocks );
+		BlockSurface_Alloc(&encode_to_surf,from_blocks.count,to_pf);
 
-	// we just allocated from_blocks so not much point in this
-	// if anything we would need to check the from_surfaces
-	//if ( ! check_buf_size(from_blocks.blocks,BlockSurface_GetDataSizeBytes(&from_blocks)) )
-	//	return OodleTex_Err_BufferTooSmall;
+		// NOTE(fg): the code below uses num_blocks (actual number of valid blocks) to check
+		// whether RDO makes sense (which is fine) but the actual work functions use the count
+		// fields in the passed BlockSurfaces, which is the correct number to use for that
+		// purpose.
+	}
 		
 	rrDXTCOptions dxtcoptions = dxtcoptions_from_bcnflags(to_bcn,flags);
-	
+
 	if ( rdo_lagrange_lambda >= 1 &&
 		num_blocks >= RDO_MIN_BLOCK_COUNT )
 	{
@@ -667,6 +822,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 			//
 			// but just in case
 			// wipe the A's to 255 so we can use 4-channel RGBA VQD
+			//
+			// @@ I think we do this like 3 times now
+			//	need to clean that up so it's better defined who needs to do it
+			//	and don't repeat it all over
 			
 			// from_blocks is a copy of from_pixel_surface
 			// so we can modify it : 
@@ -676,7 +835,7 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 			rrSurface_ForceAllAlphasOpaqueIf4Channel(&from_blocks_rrs_view);
 		}
 		
-		EDXTCRD_Metric dxtc_metric;
+		EDXTCRD_Metric dxtc_metric = eDXTCRD_Metric_Perceptual_RGBA;
 		switch(rdo_metric)
 		{
 		case OodleTex_RDO_ErrorMetric_Default: // default is RGBA
@@ -695,10 +854,12 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 			dxtc_metric = eDXTCRD_Metric_RMSE_RGBA;
 			break;
 		default:
-			return OodleTex_Err_BadMetric;
+			err = OodleTex_Err_BadMetric; // don't return here, we have stuff that needs to get freed
+			break;
 		}
-			
-		if ( ! rrDXTCRD_Encode_RDO(&to_surf,&from_blocks,from_rrs,(int)num_from_surfaces,layout,rdo_lagrange_lambda,dxtcoptions,jobify_user_ptr,num_job_threads,dxtc_metric) )
+
+		if ( err == OodleTex_Err_OK &&
+			! rrDXTCRD_Encode_RDO(&encode_to_surf,&from_blocks,from_rrs,(int)num_from_surfaces,use_layout,rdo_lagrange_lambda,dxtcoptions,jobify_user_ptr,num_job_threads,dxtc_metric,rdopts) )
 		{
 			ooLogError("rrDXTCRD_Encode_RDO failed!");
 			err = OodleTex_Err_Internal;	
@@ -710,13 +871,18 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 		// also run rdo_lagrange_lambda == 0 through here
 		// and num_blocks < RDO_MIN_BLOCK_COUNT
 		
-		rrDXTCLevel dxtc_level = rrDXTCLevel_VerySlow;
-		
-		if ( ! rrSurfaceDXTC_CompressBCN_Blocks(&to_surf,&from_blocks,dxtc_level,num_job_threads,dxtcoptions,jobify_user_ptr) )
+		if ( ! rrSurfaceDXTC_CompressBCN_Blocks(&encode_to_surf,&from_blocks,rdopts.effort,num_job_threads,dxtcoptions,jobify_user_ptr) )
 		{
 			ooLogError("rrSurfaceDXTC_CompressBCN_Blocks failed!");
 			err = OodleTex_Err_Internal;	
 		}
+	}
+
+	// If we did universal tiling, we need to turn the results back into linear order
+	if ( universal_tiling )
+	{
+		BlockSurface_Copy_Detile(&to_surf,&encode_to_surf,from_rrs,(int)num_from_surfaces,use_layout->m_tile_w,use_layout->m_tile_h);
+		BlockSurface_Free(&encode_to_surf);
 	}
 
 	if ( from_rrs != &from_rrs_local )
@@ -726,6 +892,32 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
 	RR_ASSERT( to_surf.blocks == (U8 *) to_bcn_blocks );
 	
 	return err;
+}
+
+OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_EncodeBCN_RDO(
+	OodleTex_BC to_bcn,void * to_bcn_blocks,SINTa num_blocks,
+	const OodleTex_Surface * from_surfaces,SINTa num_from_surfaces,OodleTex_PixelFormat from_format,
+	const OodleTex_Layout * layout,
+	int rdo_lagrange_lambda,OodleTex_BCNFlags flags,
+	OodleTex_RDO_ErrorMetric rdo_metric,
+	int num_job_threads,void * jobify_user_ptr)
+{
+	// Call into _Ex with equivalent options
+	OodleTex_RDO_Options opts = { };
+
+	opts.metric = rdo_metric;
+	opts.effort = OodleTex_EncodeEffortLevel_High; // matches previous default
+	opts.bcn_flags = flags;
+	opts.rdo_flags = OodleTex_RDO_Flags_None;
+
+	return OodleTex_EncodeBCN_RDO_Ex(
+		to_bcn,to_bcn_blocks,num_blocks,
+		from_surfaces,num_from_surfaces,from_format,
+		layout,
+		rdo_lagrange_lambda,
+		&opts,
+		num_job_threads,jobify_user_ptr
+	);
 }
 
 OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_DecodeBCN_Blocks(
@@ -788,6 +980,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_DecodeBCN_LinearSurfaces(
 	)
 {
 	OodleTex_Err err = OodleTex_Enter();
+	if ( err != OodleTex_Err_OK )
+		return err;
+
+	err = OodleTex_Entry_ValidateSurfaces(to_surfaces,num_to_surfaces);
 	if ( err != OodleTex_Err_OK )
 		return err;
 
@@ -864,6 +1060,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_Layout_CopyBCNToLinear(
 	if ( err != OodleTex_Err_OK )
 		return err;
 
+	err = OodleTex_Entry_ValidateSurfaces(to_surfaces,num_to_surfaces);
+	if ( err != OodleTex_Err_OK )
+		return err;
+
 	rrPixelFormat bcn_pf = OodleTex_BC_to_rrPixelFormat(bcn);
 	if ( bcn_pf == rrPixelFormat_Invalid )
 		return OodleTex_Err_BadBCnFormat;
@@ -894,6 +1094,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_Layout_Create(
 	)
 {
 	OodleTex_Err err = OodleTex_Enter();
+	if ( err != OodleTex_Err_OK )
+		return err;
+
+	err = OodleTex_Entry_ValidateSurfaces(surfaces,num_surfaces);
 	if ( err != OodleTex_Err_OK )
 		return err;
 
@@ -990,6 +1194,14 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 	if ( err != OodleTex_Err_OK )
 		return OodleTex_RMSE_Normalized_BCNAware_Error;
 
+	// ValidateSurface works on arrays, so copy them into one for validation!
+	OodleTex_Surface surfs[2];
+	surfs[0] = *surf1;
+	surfs[1] = *surf2;
+	err = OodleTex_Entry_ValidateSurfaces(surfs,2);
+	if ( err != OodleTex_Err_OK )
+		return OodleTex_RMSE_Normalized_BCNAware_Error;
+
 	rrPixelFormat pf1 = OodleTex_PixelFormat_to_rrPixelFormat(format1);
 	if ( pf1 == rrPixelFormat_Invalid )
 		return OodleTex_RMSE_Normalized_BCNAware_Error;
@@ -1008,15 +1220,18 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 	if ( was_bcn == OodleTex_BC1_WithTransparency )
 	{
 		// force A to 0 or 255
-		
-		// if it was 3 U8 we could just leave it and skip this, but whatevs
+	
+		// if it was 3 U8 we can NOT just leave it
+		// because rrSurface_GetRMSE uses the MIN of channel count
+		//	and we do not want to ignore A deltas here even if source as 3-channel
+	
 		rrSurface_ChangeFormatNormalized(&rrs1,rrPixelFormat_4_U8);
 		rrSurfaceDXTC_MakeOneBitTransparentCanonical(&rrs1);
-
+		
 		rrSurface_ChangeFormatNormalized(&rrs2,rrPixelFormat_4_U8);
 		rrSurfaceDXTC_MakeOneBitTransparentCanonical(&rrs2);
-		
-		// just go ahead and do the 8-bit RMSE
+
+		// just go ahead and do the 8-bit RMSE immediately
 		//	rather than dropping through to general path
 		//	(should give same result)
 		
@@ -1058,6 +1273,7 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 		channels_to_diff = 3;
 		break;	
 	case OodleTex_BC_Invalid:
+		// can be used for unknown BCN, or arbitrary non-BCN image diff
 		// assume HDR diff if both are float :
 		do_hdr_diff = ( info1->isFloat && info2->isFloat );
 		channels_to_diff = min_channels;
@@ -1070,6 +1286,15 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 	
 	if ( min_channels < channels_to_diff )
 	{
+		// if BC7RGBA was encoded, even if source was 3-channel RGB
+		//	we need a 4-channel diff to measure how the 255 A was lost
+		// do NOT go down to min channels here, make sure to use channels_to_diff
+
+		rrPrintf_v2("Warning: min_channels (%d) < channels_to_diff (%d)\n",min_channels,channels_to_diff);
+		
+		#if 0
+		// disabled 05-24-2021 :
+
 		// say if I take a 1-channel image
 		//	and encode it as BC7
 		// then pass was_bcn of BC7RGB
@@ -1078,11 +1303,10 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 		// if I diff the other 2 missing channels, what I will be diffing against
 		//	is their implicit promotion to 3 channels
 		// that stresses whether you do the implicit promotion the same in Encode and here
-		rrPrintf_v2("Warning: min_channels (%d) < channels_to_diff (%d)\n",min_channels,channels_to_diff);
-		
 		// eg. gray scale 1 U8 needs to be promoted like X -> XXX
 		rrPrintf_v2("  changing to %d\n",min_channels);
 		channels_to_diff = min_channels;
+		#endif
 	}
 	
 	// force format to float of N channels :
@@ -1093,13 +1317,20 @@ OOFUNC1 F32 OOFUNC2 OodleTex_RMSE_Normalized_BCNAware(
 	
 	if ( do_hdr_diff )
 	{
-		F64 f16bits_mse = rrSurface_GetF16BitsMSE_RGBA(&rrs1,&rrs2);
-		// hack scale factor to make results similar to U8 RMSE :
-		// @@ CB 07-07-2020 : I think 0.01 is a little too low
-		//		maybe around (1/64) is right
-		F32 ret = (F32)( sqrt(f16bits_mse) * 0.01 );
-		// this is better :
-		//F32 ret = (F32)( sqrt(f16bits_mse) * (1.0/64) );
+		// BC6 doesn't do A; should never have the A channel here
+		RR_ASSERT( channels_to_diff < 4 );
+
+		// CB 05-04-2021 :
+		//	change to MRSSEN
+		F64 mrssen = rrSurface_GetMRSSE_Neighborhood(&rrs1,&rrs2);
+		mrssen = sqrt(mrssen);
+
+		F32 ret = (F32)mrssen; 
+		
+		// scale to be similar to other rmse's
+		//  (in particular you need the +1 rmse target of textest_bc1rd to make sense)
+		ret *= 200.f;
+
 		return ret;
 	}
 	else
@@ -1120,6 +1351,10 @@ OOFUNC1 OodleTex_Err OOFUNC2 OodleTex_BlitNormalized(
 	if ( err != OodleTex_Err_OK )
 		return err;
 		
+	err = OodleTex_Entry_ValidateSurfaces(from_surf,1);
+	if ( err != OodleTex_Err_OK )
+		return err;
+
 	rrPixelFormat to_pf = OodleTex_PixelFormat_to_rrPixelFormat(to_format);
 	if ( to_pf == rrPixelFormat_Invalid )
 		return OodleTex_Err_BadPixelFormat;

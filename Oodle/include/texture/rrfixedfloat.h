@@ -29,6 +29,14 @@ instead I have a compromise where everything is named the same so you can make t
 
 ***********/
 
+// values over RR_FP16_MAX cannot be represented in FP16
+// they may become "Inf"
+#define RR_FP16_MAX	(65504)
+
+// smallest > 0 half float (subnormal) :
+#define RR_FP16_TINIEST_SUBNORMAL	(0.000000059604645)
+#define RR_FP16_TINIEST_NORMAL		(0.00006103515625)
+
 // http://www.mrob.com/pub/math/floatformats.html
 
 // http://en.wikipedia.org/wiki/Half_precision

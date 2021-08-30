@@ -53,7 +53,7 @@ struct rrSurfaceJobSlicer_Data
 };
 
 rrbool rrSurface_JobSlicer(rrSurface * to, const rrSurface * from,int num_workers,void * jobify_user_ptr,t_JobSlicer_Func * pfunc,void * pdata);
-rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int rect_w,int rect_h,void * jobify_user_ptr,t_JobSlicer_Func * pfunc,void * pdata);
+rrbool rrSurface_JobSlicer_Rectangles(rrSurface * to, const rrSurface * from,int rect_w,int rect_h,int num_workers,void * jobify_user_ptr,t_JobSlicer_Func * pfunc,void * pdata);
 
 //================================================
 
@@ -81,7 +81,7 @@ struct BlockSurfaceJobSlicer_Data
 
 rrbool BlockSurface_JobSlicer(BlockSurface * to, const BlockSurface * from,int num_workers,void * jobify_user_ptr,t_BlockJobSlicer_Func * pfunc,void * pdata);
 
-rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface * from,void * jobify_user_ptr,t_BlockJobSlicer_Func * pfunc,void * pdata,
+rrbool BlockSurface_JobSlicer_256K_then_N(BlockSurface * to, const BlockSurface * from,int num_workers,void * jobify_user_ptr,t_BlockJobSlicer_Func * pfunc,void * pdata,
 											int max_num_blocks_per_slice);
 											
 //================================================

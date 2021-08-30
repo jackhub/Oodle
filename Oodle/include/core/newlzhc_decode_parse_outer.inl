@@ -142,7 +142,7 @@ static RADNOINLINE bool newLZHC_decode_parse(
 	SINTa neg_offset = - NEWLZ_MIN_OFFSET;
 
 	{
-	//SIMPLEPROFILE_SCOPE_N(newLZHC_decode_parse,rrPtrDiff32(chunk_end - to_ptr));
+	SIMPLEPROFILE_SCOPE_N(newLZHC_decode_parse,rrPtrDiff32(chunk_end - to_ptr));
 
 		/**
 		

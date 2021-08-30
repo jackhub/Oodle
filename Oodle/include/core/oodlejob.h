@@ -18,6 +18,9 @@ Oodle Core job system, invokes plugged in job func pointers
 
 OODLE_NS_START
 
+#define OODLEJOB_DEFAULT  ( 0)
+#define OODLEJOB_DISABLE  (-1)
+
 // WaitAll does a single thread wait on N handles
 //	to avoid silly wakeups for wait sequences
 //	N is unbounded
@@ -32,8 +35,25 @@ void OODLE_CALLBACK Oodle_Null_Job_Func( void * pdata);
 static RADINLINE U64 OodleJob_Run( t_fp_Oodle_Job * fp_job, void * job_data , U64 * dependencies, int num_dependencies, void * user_ptr )
 {
 	RR_ASSERT( g_fp_OodlePlugin_RunJob != NULL );
-	U64 ret = (*g_fp_OodlePlugin_RunJob)(fp_job,job_data,dependencies,num_dependencies,user_ptr);
+
+	// filter out 0 dependencies
+	U64 deps[OODLE_JOB_MAX_DEPENDENCIES];
+	int ndeps = 0;
+	for (int i=0; i < num_dependencies; ++i)
+		if (dependencies[i] != 0)
+			deps[ndeps++] = dependencies[i];
+	U64 ret = (*g_fp_OodlePlugin_RunJob)(fp_job,job_data,deps,ndeps,user_ptr);
 	return ret;
+}
+
+// as above, but can run in-thread if requested by num_job_threads == OODLEJOB_DISABLE
+static RADINLINE U64 OodleJob_Run_MaybeSingleThreaded( t_fp_Oodle_Job * fp_job, void * job_data , U64 * dependencies, int num_dependencies, void * user_ptr, int num_job_threads )
+{
+	if (num_job_threads >= OODLEJOB_DEFAULT)
+		return OodleJob_Run(fp_job,job_data,dependencies,num_dependencies,user_ptr);
+	// dependencies should be all 0 as well
+	fp_job(job_data);
+	return 0;
 }
 
 // wait for a job started by Job_Run ; also deleted the handle
@@ -45,7 +65,8 @@ static RADINLINE void OodleJob_Wait( U64 job_handle, void * user_ptr )
 	//ThreadProfiler_Tag("wait",job_handle);
 		
 	RR_ASSERT( g_fp_OodlePlugin_WaitJob != NULL );
-	(*g_fp_OodlePlugin_WaitJob)(job_handle,user_ptr);
+	if (job_handle != 0)
+		(*g_fp_OodlePlugin_WaitJob)(job_handle,user_ptr);
 }
 
 static RADINLINE bool Oodle_IsJobSystemSet( )

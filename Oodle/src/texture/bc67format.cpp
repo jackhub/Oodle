@@ -572,9 +572,8 @@ static U32 bc6h_bitrev6(U32 x)
 	return tab[x];
 }
 
-static void bc6h_decode_endpoints(S32 endpoints[3][4], BC67BitBuf * buf, const BC6HModeDesc * m, bool is_signed)
+static void bc6h_decode_endpoints(S32 endpoints[3][4], S32 e[3][4], BC67BitBuf * buf, const BC6HModeDesc * m, bool is_signed)
 {
-	S32 e[3][4]; // raw endpoints
 	U32 extra = 0;
 
 	// reading the endpoint bits is an unholy mess, unfortunately
@@ -737,6 +736,8 @@ static void bc6h_decode_endpoints(S32 endpoints[3][4], BC67BitBuf * buf, const B
 				S32 x, deq;
 
 				x = e[chan][i] & zext_mask;
+				e[chan][i] = x; // write back masked, zero-extended value
+
 				if (epb >= 16) // spec says >=15, but that makes no sense with the value range; either way there's only 12 and then 16 bits
 					deq = x;
 				else if (x == 0)
@@ -764,6 +765,8 @@ static void bc6h_decode_endpoints(S32 endpoints[3][4], BC67BitBuf * buf, const B
 
 				// sign extend from source width
 				x = (e[chan][i] & value_bits) - (e[chan][i] & sign_bit);
+				e[chan][i] = x; // write back masked, sign-extended value
+
 				if (epb >= 16)
 					deq = x;
 				else
@@ -863,8 +866,9 @@ void bc6h_decode_block(U16 * out_rgba, SINTa stride_in_bytes, rrbool is_signed, 
 	}
 
 	S32 endpoints[3][4]; // [channel][index]
+	S32 endpoints_q[3][4];
 	bool signed_flag = is_signed != 0;
-	bc6h_decode_endpoints(endpoints, &buf, m, signed_flag);
+	bc6h_decode_endpoints(endpoints, endpoints_q, &buf, m, signed_flag);
 
 	U32 partition_id = buf.get(m->pb);
 
@@ -889,7 +893,7 @@ bool bc6h_analyze_block_raw(BC6HBlockRawDesc * desc, rrbool is_signed, const voi
 	if (!m)
 		return false;
 
-	bc6h_decode_endpoints(desc->endpoints_raw, &buf, m, is_signed != 0);
+	bc6h_decode_endpoints(desc->endpoints_internal, desc->endpoints_quant, &buf, m, is_signed != 0);
 	desc->partition_id = static_cast<U8>(buf.get(m->pb));
 
 	// read and unpack indices

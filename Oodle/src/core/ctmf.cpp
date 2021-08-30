@@ -20,6 +20,12 @@
 #define CTMF_FAM_MML	4 
 //#define CTMF_FAM_MML	3  // <- not really supported
 
+/*
+#include "rrsimpleprof.h"
+/*/
+#include "rrsimpleprofstub.h"
+/**/
+
 OODLE_NS_START
 
 /**
@@ -103,6 +109,8 @@ CacheTableMatchFinder::~CacheTableMatchFinder()
 
 int CacheTableMatchFinder::ProcessChunk(int chunkSize, UnpackedMatchPair * outMatches, int maxPairs)
 {
+	SIMPLEPROFILE_SCOPE_N(ctmf_chunk,chunkSize);
+
 	// Requiring maxPairs >= 2 makes the code easier and is not a serious limitation
 	RR_ASSERT(maxPairs >= 2);
 
@@ -119,7 +127,7 @@ int CacheTableMatchFinder::ProcessChunk(int chunkSize, UnpackedMatchPair * outMa
 	const U8 * ptr_matchend = raw_end - 4;
 
 	// if we have a pending long match, resume it first before we try anything else
-	if ( longMatchOffs )
+	if ( longMatchOffs && ( pos < chunkEnd ) )
 	{
 		pos = ReportLongMatch(outMatches, chunkStart, chunkEnd, pos, maxPairs);
 	}
@@ -187,7 +195,7 @@ int CacheTableMatchFinder::ProcessChunk(int chunkSize, UnpackedMatchPair * outMa
 #ifdef __RADSSE2__
 			if (t_CTMF::c_table_depth == 16)
 			{
-				U32 offsets[16];
+				RAD_ALIGN(U32, offsets[16], 16);
 				__m128i vRefHash = _mm_set1_epi32(hash);
 				__m128i vRefPos = _mm_set1_epi32(posm1);
 				__m128i vOne = _mm_set1_epi32(1);

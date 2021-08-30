@@ -29,13 +29,14 @@ enum
 	BC7ENC_EXTRAPOLATE_SELECTORS = 0x00000080ll,
 	BC7ENC_SCALE_SELECTORS		 = 0x00000100ll,
 	BC7ENC_REFINE_PARTITIONS	 = 0x00000200ll,
-	BC7ENC_BRUTE_PBITS           = 0x00000800ll,
+	BC7ENC_BRUTE_PBITS			 = 0x00000800ll,
 	BC7ENC_IDXS_EXACT			 = 0x00002000ll,
 	BC7ENC_PCA_PSEUDOSQUISH		 = 0x00008000ll,
 	BC7ENC_PCA_TRY_HARD			 = 0x00010000ll, // try straddle fits for all PCA candidates
 	BC7ENC_SLIDE_SELECTORS		 = 0x00020000ll,
 	BC7ENC_BRUTE_PBITS_IDXS_EXACT= 0x00080000ll,
 	BC7ENC_SEPARATE_ALPHA		 = 0x00100000ll, // alpha is special
+	BC7ENC_MODE6_EARLY_LSQ_FIT	 = 0x00200000ll,
 
 	BC7ENC_INDEX_MASK			 = BC7ENC_IDXS_EXACT,
 	BC7ENC_RETAIN_MASK			 = BC7ENC_IGNORE_ALPHA | BC7ENC_INDEX_MASK | BC7ENC_SEPARATE_ALPHA,
@@ -135,8 +136,6 @@ void bc7_enc_options_set(BC7EncOptions * popt,rrDXTCLevel level, rrDXTCOptions o
 //	not mode dependent
 struct BC7PartitionInfo
 {
-	// note: 3 subsets max, but 4 gives a nicer data layout for SIMD
-	//	(CB: huh? we don't simd this)
 	BC7Color bbox[3][2]; // [subset][lohi]
 
 	void calc(const U8 block[64], int p, int ns, BC7Flags flags);
@@ -150,7 +149,7 @@ struct BC7PartitionInfo
 
 // BC7Prep
 //	precomputed information about a block
-//  before any mode/coding decisions
+//	before any mode/coding decisions
 //	const after init
 struct BC7Prep
 {
@@ -161,6 +160,8 @@ struct BC7Prep
 	BC7PartitionInfo infos[NINFO]; // 1 subset, 2 subsets, 3 subsets - indexed by real partition index in BC7 block.
 
 	U8 local_block[64]; // @@ there may be some small benefit to making these color blocks 16-aligned
+	F32 mean[4];
+	F32 covar[12];
 	bool single_color;
 	bool has_alpha;
 	U64 rand_seed;
@@ -304,6 +305,10 @@ void bc7enc_emit(U8 * ouput_bc7, const BC7BlockState * st, BC7Flags flags);
 void bc7enc_state_from_bits(BC7BlockState * st, const U8 * input_bc7, BC7Flags flags);
 
 void bc7_encode_single_color_block(U8 * output_bc7, const U8 rgba[4]);
+
+// Checks whether the given block is an encoding of a BC7 solid-color block that we
+// emitted
+bool bc7_is_encoded_single_color_block(const U8 * bc7_block);
 
 void BC7Input_Get(BC7Input * input,const U8 * block, const BC7BlockState * st, int alpha_weight=1);
 

@@ -775,7 +775,7 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 	const U8 * from_ptr = from;
 
 	// can I get 2 bytes? :
-	REQUIRE_FUZZ_RETURN( from_ptr+2 <= from_end , -1 );
+	REQUIRE_FUZZ_RETURN( 2 <= rrPtrDiff( from_end - from_ptr ) , -1 );
 	
 	U8 first_byte = *from_ptr;
 	U32 array_type = (first_byte>>4);
@@ -804,7 +804,7 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 			// 3 byte header
 			// must always have >= 1 payload bytes, so check for 4 :
 			
-			REQUIRE_FUZZ_RETURN( from_ptr+4 <= from_end , -1 );
+			REQUIRE_FUZZ_RETURN( 4 <= rrPtrDiff( from_end - from_ptr ), -1 );
 			
 			U32 header = RR_GET24_BE_OVERRUNOK(from_ptr);
 			from_ptr += 3;
@@ -839,13 +839,13 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 	else
 	{
 		// can I get 4 bytes? :
-		if ( from_ptr+4 > from_end )
+		if ( 4 > rrPtrDiff( from_end - from_ptr ) )
 		{
 			// could be a 3-byte header at end of stream with zero payload
 			// -> this cannot occur currently in valid Kraken/Mermaid/Selkie data
 			//	 they always have >= 1 byte after the "arrays" data
 			//	 but you could hit it on corrupt/truncated data, or in some future codec
-			if ( from_ptr+3 == from_end )
+			if ( 3 == rrPtrDiff( from_end - from_ptr ) )
 			{		
 				// get 3-byte header :
 				U32 header = RR_GET24_BE_NOOVERRUN(from_ptr);
@@ -873,7 +873,7 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 			if ( (header32>>NEWLZ_ARRAY_SIZE_BITS) != 0 ) NEWLZ_ARRAY_RETURN_FAILURE();
 			
 			if ( to_len > to_len_max ) NEWLZ_ARRAY_RETURN_FAILURE();
-			if ( from_ptr+to_len > from_end ) NEWLZ_ARRAY_RETURN_FAILURE();
+			if ( to_len > rrPtrDiff( from_end - from_ptr ) ) NEWLZ_ARRAY_RETURN_FAILURE();
 					
 			from_ptr += to_len;
 			*pto_len = to_len;
@@ -888,7 +888,7 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 				NEWLZ_ARRAY_RETURN_FAILURE();
 			}
 
-			if ( from_ptr+5 > from_end ) NEWLZ_ARRAY_RETURN_FAILURE();
+			if ( 5 > rrPtrDiff( from_end - from_ptr ) ) NEWLZ_ARRAY_RETURN_FAILURE();
 
 			// re-get as 5-byte header :
 			U64 header64 = *from_ptr++;
@@ -898,7 +898,7 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 			RR_ASSERT( (header64>>36) == array_type );
 
 			SINTa comp_len = (SINTa)(header64 & (NEWLZ_ARRAY_SIZE_MASK));
-			if ( from_ptr + comp_len > from_end )
+			if ( comp_len > rrPtrDiff( from_end - from_ptr ) )
 				NEWLZ_ARRAY_RETURN_FAILURE();
 
 			SINTa to_len = (SINTa)((header64>>NEWLZ_ARRAY_SIZE_BITS) & (NEWLZ_ARRAY_SIZE_MASK));
@@ -907,9 +907,9 @@ SINTa newLZ_get_arraylens(const U8 * from, const U8 * from_end, SINTa * pto_len,
 			if ( to_len > to_len_max ) NEWLZ_ARRAY_RETURN_FAILURE();
 			if ( comp_len >= to_len ) NEWLZ_ARRAY_RETURN_FAILURE();
 			RR_ASSERT( comp_len < to_len );
-			
+
+			RR_ASSERT( comp_len <= rrPtrDiff( from_end - from_ptr ) );
 			from_ptr += comp_len;
-			RR_ASSERT( from_ptr <= from_end );
 
 			*pto_len = to_len;
 			return rrPtrDiff( from_ptr - from );
@@ -938,7 +938,7 @@ SINTa newLZ_get_array_comp(U32 array_type, U8ptr * ptr_to, const U8 * from, cons
 		// small header
 		// 3 byte header + min 1 byte payload
 		//	(and I want to grab a u32) so check 4 :
-		REQUIRE_FUZZ_RETURN( from_ptr+4 <= from_end , -1 );
+		REQUIRE_FUZZ_RETURN( 4 <= rrPtrDiff( from_end - from_ptr ), -1 );
 		
 		U32 header = RR_GET24_BE_OVERRUNOK(from_ptr);
 		from_ptr += 3;
@@ -958,7 +958,7 @@ SINTa newLZ_get_array_comp(U32 array_type, U8ptr * ptr_to, const U8 * from, cons
 		}
 		#endif			
 			
-		if ( from_ptr + comp_len > from_end )
+		if ( comp_len > rrPtrDiff( from_end - from_ptr ) )
 			NEWLZ_ARRAY_RETURN_FAILURE();
 
 		to_len = (SINTa)((header>>NEWLZ_ARRAY_SMALL_SIZE_BITS) & (NEWLZ_ARRAY_SMALL_SIZE_MASK));
@@ -970,7 +970,7 @@ SINTa newLZ_get_array_comp(U32 array_type, U8ptr * ptr_to, const U8 * from, cons
 	}
 	else
 	{
-		REQUIRE_FUZZ_RETURN( from_ptr+5 <= from_end , -1 );
+		REQUIRE_FUZZ_RETURN( 5 <= rrPtrDiff( from_end - from_ptr ) , -1 );
 
 		// re-get as 5-byte header :
 		U64 header = *from_ptr++;
@@ -992,7 +992,7 @@ SINTa newLZ_get_array_comp(U32 array_type, U8ptr * ptr_to, const U8 * from, cons
 		}
 		#endif	
 		
-		if ( from_ptr + comp_len > from_end )
+		if ( comp_len > rrPtrDiff( from_end - from_ptr ) )
 			NEWLZ_ARRAY_RETURN_FAILURE();
 
 		to_len = (SINTa)((header>>NEWLZ_ARRAY_SIZE_BITS) & (NEWLZ_ARRAY_SIZE_MASK));
@@ -1046,11 +1046,10 @@ SINTa newLZ_get_array_comp(U32 array_type, U8ptr * ptr_to, const U8 * from, cons
 	if ( comp_len != comp_used )
 		NEWLZ_ARRAY_RETURN_FAILURE();
 
+	RR_ASSERT( comp_len <= rrPtrDiff( from_end - from_ptr ) );
 	from_ptr += comp_len;
-	RR_ASSERT( from_ptr <= from_end );
 	SINTa from_len_used = rrPtrDiff( from_ptr - from );
 
-	
 	#ifdef SPEEDFITTING
 	if ( g_speedfitter_stage == 2 )
 	{

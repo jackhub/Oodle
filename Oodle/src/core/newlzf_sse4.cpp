@@ -101,30 +101,34 @@ which is where you want it to be for the prev offset of the next round
 
 static const int c_comp_advance[16] = { 8 ,6 ,6 ,4 ,6 ,4 ,4 ,2 ,6 ,4 ,4 ,2 ,4 ,2 ,2 ,0 };	
    	
-#define Z		((char)-1)
-#define PREV	15,14,13,12
-#define ONE		Z,Z,1,0
-#define TWO		Z,Z,3,2
-#define THREE	Z,Z,5,4
-#define FOUR	Z,Z,7,6
-static const __m128i c_offset_shuffles[16] = {
-		_mm_set_epi8(  FOUR,  THREE,  TWO,  ONE ),
-		_mm_set_epi8(  THREE,  TWO,  ONE, PREV ),
-		_mm_set_epi8(  THREE,  TWO,  ONE,  ONE ),
-		_mm_set_epi8(  TWO,  ONE, PREV, PREV ),
-		_mm_set_epi8(  THREE,  TWO,  TWO,  ONE ),
-		_mm_set_epi8(  TWO,  ONE,  ONE, PREV ),
-		_mm_set_epi8(  TWO,  ONE,  ONE,  ONE ),
-		_mm_set_epi8(  ONE, PREV, PREV, PREV ),
-		_mm_set_epi8(  THREE,  THREE,  TWO,  ONE ),
-		_mm_set_epi8(  TWO,  TWO,  ONE, PREV ),
-		_mm_set_epi8(  TWO,  TWO,  ONE,  ONE ),
-		_mm_set_epi8(  ONE,  ONE, PREV, PREV ),
-		_mm_set_epi8(  TWO,  TWO,  TWO,  ONE ),
-		_mm_set_epi8(  ONE,  ONE,  ONE, PREV ),
-		_mm_set_epi8(  ONE,  ONE,  ONE,  ONE ),
-		_mm_set_epi8( PREV, PREV, PREV, PREV )
-	};
+#define Z		-1
+#define PREV	12,13,14,15
+#define ONE		0,1,Z,Z
+#define TWO		2,3,Z,Z
+#define THREE	4,5,Z,Z
+#define FOUR	6,7,Z,Z
+static RAD_ALIGN(const S8, c_offset_shuffles[16][16], 16) =
+{
+	{ ONE,  TWO,  THREE,FOUR  },
+	{ PREV, ONE,  TWO,  THREE },
+	{ ONE,  ONE,  TWO,  THREE },
+	{ PREV, PREV, ONE,  TWO   },
+
+	{ ONE,  TWO,  TWO,  THREE },
+	{ PREV, ONE,  ONE,  TWO   },
+	{ ONE,  ONE,  ONE,  TWO   },
+	{ PREV, PREV, PREV, ONE   },
+
+	{ ONE,  TWO,  THREE, THREE },
+	{ PREV, ONE,  TWO,   TWO   },
+	{ ONE,  ONE,  TWO,   TWO   },
+	{ PREV, PREV, ONE,   ONE   },
+
+	{ ONE,  TWO,  TWO,   TWO   },
+	{ PREV, ONE,  ONE,   ONE   },
+	{ ONE,  ONE,  ONE,   ONE   },
+	{ PREV, PREV, PREV,  PREV  },
+};
 #undef Z
 #undef PREV
 #undef ONE
@@ -139,7 +143,7 @@ static const __m128i c_offset_shuffles[16] = {
 	int offset_masks = _mm_movemask_epi8(packets); \
 	__m128i offsets = _mm_loadl_epi64((const __m128i *)(off16_ptr)); \
 	offsets = _mm_insert_epi32(offsets,-neg_offset,3); \
-	offsets = _mm_shuffle_epi8(offsets,c_offset_shuffles[offset_masks]); \
+	offsets = _mm_shuffle_epi8(offsets,_mm_load_si128((const __m128i *)c_offset_shuffles[offset_masks])); \
 	offsets = _mm_sub_epi32(_mm_setzero_si128(),offsets); \
 	RAD_ALIGN(U32,offsets_u32,16) [4]; \
 	_mm_store_si128((__m128i *)offsets_u32,offsets); \
@@ -180,7 +184,7 @@ static const __m128i c_offset_shuffles[16] = {
 		/* loadl_pi: load bottom half (top half is preserved) */ \
 		offsets = _mm_castps_si128(_mm_loadl_pi(_mm_castsi128_ps(offsets), (__m64 *)(off16_ptr))); \
 		off16_ptr += c_comp_advance[offset_masks]; \
-		offsets = _mm_shuffle_epi8(offsets,c_offset_shuffles[offset_masks]); \
+		offsets = _mm_shuffle_epi8(offsets,_mm_load_si128((const __m128i *)c_offset_shuffles[offset_masks])); \
 		four_offsets[i] = _mm_sub_epi32(_mm_setzero_si128(),offsets); \
 	); \
 	U64 packets64; S64 two_offsets; \

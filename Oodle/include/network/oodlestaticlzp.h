@@ -328,6 +328,15 @@ IDOC OOFUNC1 OO_SINTa OOFUNC2 OodleNetwork1UDP_StateCompacted_MaxSize(void);
 
 */
 
+IDOC OOFUNC1 OO_SINTa OOFUNC2 OodleNetwork1UDP_State_Compact_ForVersion( OodleNetwork1UDP_StateCompacted * to, const OodleNetwork1UDP_State * from, OO_S32 for_oodle_major_version);
+/* See $OodleNetwork1UDP_State_Compact
+* 
+* takes oodle_major_version to target
+* 
+* Oodle Network Compacted state changed from major version 5 to 6 (eg 2.5.5 to 2.6.0)
+* 
+*/
+
 IDOC OOFUNC1 OO_SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_StateCompacted * to, const OodleNetwork1UDP_State * from );
 /* Fills a OodleNetwork1UDP_StateCompacted from a OodleNetwork1UDP_State
 
@@ -341,6 +350,15 @@ IDOC OOFUNC1 OO_SINTa OOFUNC2 OodleNetwork1UDP_State_Compact( OodleNetwork1UDP_S
 
 	Note - use the return value to save only the prefix of the Compacted state.
 
+*/
+
+IDOC OOFUNC1 OO_BOOL OOFUNC2 OodleNetwork1UDP_State_Uncompact_ForVersion( OodleNetwork1UDP_State * to, const OodleNetwork1UDP_StateCompacted * from, OO_S32 for_oodle_major_version);
+/* See $OodleNetwork1UDP_State_Uncompact
+* 
+* takes oodle_major_version to target
+* 
+* Oodle Network Compacted state changed from major version 5 to 6 (eg 2.5.5 to 2.6.0)
+* 
 */
 
 IDOC OOFUNC1 OO_BOOL OOFUNC2 OodleNetwork1UDP_State_Uncompact( OodleNetwork1UDP_State * to, const OodleNetwork1UDP_StateCompacted * from );

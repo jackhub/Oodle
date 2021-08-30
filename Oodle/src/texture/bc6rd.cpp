@@ -51,6 +51,67 @@ RR_NAMESPACE_START
 // - Need to figure out what to do in textest BC1RD for BC6
 // - Signed data again, sigh
 
+struct BC6Config
+{
+	// The size of the window to search in endpoints pass.
+	int endpoints_window_size;
+
+	// The size of the window to search in indices pass.
+	int indices_window_size;
+};
+
+static const BC6Config c_config_levels[rrDXTCLevel_Count] =
+{
+	// rrDXTCLevel_VeryFast=0 (== 1 secret level in OodleTex_ API ; too low quality, not currently well optimized for this quality-speed tradeoff)
+	{
+		// endpoints_window_size
+		256,
+		// indices_window_size
+		256,
+	},
+
+	// rrDXTCLevel_Fast=1,		// == OodleTex_EncodeEffortLevel_Low
+	{
+		// endpoints_window_size
+		 80,
+		// indices_window_size
+		 40,
+	},
+
+	// rrDXTCLevel_Slow=2,		// == OodleTex_EncodeEffortLevel_Normal
+	{
+		// endpoints_window_size
+		150,
+		// indices_window_size
+		70,
+	},
+
+	// DEFAULT :
+	// rrDXTCLevel_VerySlow=3  == OodleTex_EncodeEffortLevel_High == OodleTex_EncodeEffortLevel_Default
+	{
+		// endpoints_window_size
+		256,
+		// indices_window_size
+		256,
+	},
+
+	// rrDXTCLevel_Reference=4,// == 99 secret level in OodleTex_ API ; too slow to be practical, not a good time-quality tradeoff; just a max quality reference
+	{
+		// endpoints_window_size
+		256,
+		// indices_window_size
+		256,
+	}
+};
+
+static const BC6Config & bc6rd_get_config(rrDXTCLevel effort)
+{
+	//rrprintf("bc6rd_get_config: effort level=%d (%s)\n", effort, rrDXTCLevel_GetName(effort));
+
+	RR_ASSERT( 0 <= (int)effort && (int)effort < RR_ARRAY_SIZE(c_config_levels) );
+	return c_config_levels[effort];
+}
+
 struct BC6WindowEntry
 {
 	BC6BlockState st;
@@ -58,17 +119,18 @@ struct BC6WindowEntry
 	int most_recent_bi; // block index we were most recently used in
 };
 
-template<int t_window_size>
 struct BC6Window
 {
-	BC6WindowEntry slots[t_window_size]; // not in order, indexed through inds
-	U16 inds[t_window_size]; // inds[i] = slot index of i'th element in LRU order
+	vector<BC6WindowEntry> slots; // not in order, indexed through inds
+	vector<U16> inds; // inds[i] = slot index of i'th element in LRU order
 	int count; // num blocks in window
 
-	BC6Window()
+	BC6Window(int window_size)
 		: count(0)
 	{
-		for LOOP(i,t_window_size)
+		slots.resize(window_size);
+		inds.resize(window_size);
+		for LOOPVEC(i,inds)
 			inds[i] = static_cast<U16>(i);
 	}
 
@@ -83,10 +145,10 @@ struct BC6Window
 	{
 		if ( found_index < 0 )
 		{
-			if ( count < t_window_size) // grow window
+			if ( count < inds.size32() ) // grow window
 				found_index = count++;
 			else // replace LRU block
-				found_index = t_window_size - 1;
+				found_index = inds.size32() - 1;
 
 			BC6WindowEntry * entry = &slots[inds[found_index]];
 			entry->st = new_st;
@@ -97,7 +159,7 @@ struct BC6Window
 		RR_ASSERT(found_index >= 0 && found_index < count);
 
 		U16 best_slot = inds[found_index];
-		memmove(inds + 1, inds, found_index * sizeof(inds[0]));
+		memmove(&inds[1], &inds[0], found_index * sizeof(inds[0]));
 		inds[0] = best_slot;
 
 		slots[best_slot].most_recent_bi = bi;
@@ -185,9 +247,12 @@ bool BC6_RD(BlockSurface * to_blocks,
 	const BlockSurface * baseline_blocks,
 	const BlockSurface * activity_blocks,
 	int lambdai,
-	rrDXTCOptions dxtc_options)
+	rrDXTCOptions dxtc_options,
+	const rrDXTCRD_Options & rd_options)
 {
 	SIMPLEPROFILE_SCOPE(bc6rd);
+
+	const BC6Config & config = bc6rd_get_config(rd_options.effort);
 
 	RR_ASSERT( from_blocks_f32->pixelFormat == rrPixelFormat_4_F32 );
 	RR_ASSERT( to_blocks->pixelFormat == rrPixelFormat_BC6U || to_blocks->pixelFormat == rrPixelFormat_BC6S );
@@ -204,15 +269,15 @@ bool BC6_RD(BlockSurface * to_blocks,
 	int nblocks = from_blocks.count;
 	RR_ASSERT( nblocks <= 16*1024 );
 
-	const int kWindowSize = 256;
-	RR_COMPILER_ASSERT( kWindowSize <= 32*1024 ); // no point having a window larger than max # blocks
+	//const int kWindowSize = 256;
+	RR_ASSERT( config.endpoints_window_size <= 32*1024 ); // no point having a window larger than max # blocks
+	RR_ASSERT( config.indices_window_size <= 32*1024 );
 
-	BC6Window<kWindowSize> endpoint_window;
-	BC6Window<kWindowSize> indices_window;
+	BC6Window endpoint_window(config.endpoints_window_size);
+	BC6Window indices_window(config.indices_window_size);
 
-	rrDXTCLevel dxtc_level = rrDXTCLevel_VerySlow;
 	BC6EncOptions opts;
-	bc6enc_options_init(&opts, dxtc_level, dxtc_options, is_signed);
+	bc6enc_options_init(&opts, rd_options.effort, dxtc_options, is_signed);
 
 	rrRandState zero_state = {}; // we don't actually do any randomized refines, we just need to pass _a_ state
 

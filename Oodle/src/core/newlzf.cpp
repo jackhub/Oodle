@@ -810,7 +810,7 @@ static RADFORCEINLINE bool newLZF_get_match_heuristic(match *pmatch,
 		{
 			// no CTMF_CHECK_MASK in 16-bit row[]
 				
-			S32 offset = (U16)(cur_absolute_pos - row[d]);
+			SINTa offset = (U16)(cur_absolute_pos - row[d]);
 
 			if ( offset >= dictionarySize ) // if user doesn't limit dictionarySize, this is never hit
 				continue;
@@ -838,7 +838,7 @@ static RADFORCEINLINE bool newLZF_get_match_heuristic(match *pmatch,
 			//if ( newLZF_CTMF::c_table_depth == 1 || newLZF_IsNormalMatchBetter(len,offset,bestml,bestoff) )
 			{
 				bestml = len;
-				bestoff = offset;
+				bestoff = (S32)offset;
 			}
 		}
 		
@@ -866,7 +866,7 @@ static RADFORCEINLINE bool newLZF_get_match_heuristic(match *pmatch,
 					continue;
 				#endif
 				
-				S32 offset = (cur_absolute_pos - hash_entry)&CTMF_POS_MASK; 
+				SINTa offset = (cur_absolute_pos - hash_entry)&CTMF_POS_MASK;
 					
 				// skip offsets <= 8 because we catch them after
 				if ( offset <= NEWLZF_MIN_OFFSET ) continue;
@@ -892,7 +892,7 @@ static RADFORCEINLINE bool newLZF_get_match_heuristic(match *pmatch,
 				)
 				{
 					bestml = len;
-					bestoff = offset;
+					bestoff = (S32)offset;
 				}
 			}
 			
@@ -2762,7 +2762,7 @@ static SINTa newLZF_encode_chunk(const newlz_vtable * vtable,
 
 		// literal loop: seek the next match
 		match chosen;
-		U32 scaled_skip_dist = 1 << t_step_literals_shift;
+		SINTa scaled_skip_dist = 1 << t_step_literals_shift;
 
 		// if t_step_literals_shift is on, t_do_lazy_parse must be off :
 		RR_COMPILER_ASSERT( t_do_lazy_parse==0 || t_step_literals_shift==0 ); // not compatible
@@ -2782,11 +2782,11 @@ static SINTa newLZF_encode_chunk(const newlz_vtable * vtable,
 				}
 			}
 
-			U32 step = t_step_literals_shift ? (scaled_skip_dist>>t_step_literals_shift) : 1;
+			SINTa step = t_step_literals_shift ? (scaled_skip_dist>>t_step_literals_shift) : 1;
 
 			// if skipping that far would put us past the parse end, bail.
 			// have to check this before get match because it does prefetch next
-			if ( rrPtrDiff(parse_end_ptr - ptr) <= (SINTa)step )
+			if ( rrPtrDiff(parse_end_ptr - ptr) <= step )
 				goto parse_chunk_done;
 
 			// once we find a match, we can stop!
@@ -3073,7 +3073,7 @@ static SINTa newLZF_encode_chunk_fast_mode(const newlz_vtable * vtable,
 				// literal loop: seek the next match
 				const U8 * match_end;
 				const U8 * match_ptr; // position we're matching to
-				S32 match_offs; // or 0 for LO
+				SINTa match_offs; // or 0 for LO
 				SINTa neg_offset;
 				SINTa scaled_skip_dist = 1 << t_step_literals_shift;
 
@@ -3086,9 +3086,9 @@ static SINTa newLZF_encode_chunk_fast_mode(const newlz_vtable * vtable,
 					SINTa pos = rrPtrDiff(ptr - hash_base);
 					HashType hashpos = fast_ctmf_insert(hash_table, ptr64le, hash_mul, hash_shift, pos);
 
-					// check for rep0 match *at next byte* (pseudo-lazy), MMl 3
+					// check for rep0 match *at next byte* (pseudo-lazy), MML 3
 					U32 lodiff = ptr32le ^ RR_GET32_LE_UNALIGNED(ptr+neg_lo0);
-					if ( (lodiff >> 8) == 0 ) // this checks that bytes 1-3 (zero-based) at ptr and lo32 agree (i.e. ptr+1 has a len >=3 LO0 match)
+					if ( lodiff <= 255 ) // this checks that bytes 1-3 (zero-based) at ptr and lo32 agree (i.e. ptr+1 has a len >=3 LO0 match)
 					{
 						ptr++;
 						match_ptr = ptr + neg_lo0;
@@ -3104,11 +3104,12 @@ static SINTa newLZF_encode_chunk_fast_mode(const newlz_vtable * vtable,
 						break;
 					}
 
-					// if ptr32==lo32, we bail out of the above test
+					// if ptr32==lo32 (lodiff==0), we take the above branch which breaks out of the loop,
+					// guaranteeing we don't pass 0 here
 					S32 lo_ml = rrCtzBytes32(lodiff);
 
 					// is this a len >=4 valid match?
-					match_offs = (S32) (HashType)(pos - hashpos);
+					match_offs = (SINTa) (HashType)(pos - hashpos);
 					match_ptr = ptr - match_offs;
 					U32 match32le = RR_GET32_LE_UNALIGNED(match_ptr);
 					if ( match32le == ptr32le )
@@ -3192,7 +3193,7 @@ static SINTa newLZF_encode_chunk_fast_mode(const newlz_vtable * vtable,
 				// encode the match
 				int lrl = rrPtrDiff32( ptr - literals_start );
 				int ml = rrPtrDiff32( match_end - ptr );
-				newLZF_encoder_arrays_put_packet(&encarrays,ml,lrl,match_offs,(S32)-neg_lo0,literals_start);
+				newLZF_encoder_arrays_put_packet(&encarrays,ml,lrl,(S32)match_offs,(S32)-neg_lo0,literals_start);
 
 				// update lastoffset
 				neg_lo0 = neg_offset;
@@ -3336,11 +3337,11 @@ so use it for now
 
 **/
 
-#ifdef __RADCORTEXA57__
+#ifdef __RADARM64__
 
 /**
 
-Cortex-A57 fiddled version
+A64 fiddled version
 
 the idea is to take advantage of ARM conditional instructions for the offset selection
 
@@ -3360,10 +3361,10 @@ so quite possible that's just heisenoptimization
 
 #define NEWLZF_FOUR_SIMPLE_PACKETS_COPY_I(i) { \
 		newlz_literals_copy8<NEWLZF_DECODE_LITERALS_TYPE>(to_ptr,to_ptr+neg_offset,literals_ptr); \
-		U32 lrl = NEWLZF_BEXTR32(four_packets,0,3); \
-		U32 offset_flag = four_packets & (1<<7); \
-		U32 ml = NEWLZF_BEXTR32(four_packets, 3,4); \
-		four_packets >>= 8; \
+		U32 lrl = (U32)(several_packets & 7); \
+		U32 offset_flag = (U32)(several_packets & 0x80); \
+		U32 ml = (U32)((several_packets >> 3) & 0xf); \
+		several_packets >>= 8; \
 		to_ptr += lrl; literals_ptr += lrl; \
 		S32 next_offset = -(S32) RR_GET16_LE_UNALIGNED(off16_ptr); \
 		neg_offset = offset_flag ? neg_offset : next_offset; \
@@ -3374,8 +3375,13 @@ so quite possible that's just heisenoptimization
 		to_ptr += ml; } \
 
 #define NEWLZF_FOUR_SIMPLE_PACKETS_SCALAR() do { \
-	U32 four_packets = RR_GET32_LE_UNALIGNED(packets_ptr); packets_ptr += 4; \
+	U32 several_packets = RR_GET32_LE_UNALIGNED(packets_ptr); packets_ptr += 4; \
 	RR_UNROLL_I_4(0, NEWLZF_FOUR_SIMPLE_PACKETS_COPY_I(i) ); \
+} while(0)
+
+#define NEWLZF_EIGHT_SIMPLE_PACKETS_SCALAR_PRELOADED(eight_packets) do { \
+	U64 several_packets = eight_packets; packets_ptr += 8; \
+	RR_UNROLL_I_8(0, NEWLZF_FOUR_SIMPLE_PACKETS_COPY_I(i) ); \
 } while(0)
 
 #else
@@ -3521,7 +3527,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 	// + at least 1 byte of payload
 	// = 10
 	// (this also protects the first-8 raw byte read)
-	REQUIRE_FUZZ_RETURN( comp_ptr+10 <= comp_end , - 1 );
+	REQUIRE_FUZZ_RETURN( 10 <= rrPtrDiff(comp_end - comp_ptr), - 1 );
 
 	CHECK( const U8 * check_ptr = check_buf );
 	
@@ -3617,7 +3623,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 	// get off16's :
 
 	// get offset count headers :
-	REQUIRE_FUZZ_RETURN( comp_ptr+2 <= comp_end, -1 );
+	REQUIRE_FUZZ_RETURN( 2 <= rrPtrDiff(comp_end - comp_ptr), -1 );
 				
 	U32 num_off16s = RR_GET16_LE_UNALIGNED(comp_ptr);
 	comp_ptr += 2;
@@ -3672,7 +3678,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 		// align up :
 		if ( (UINTa)scratch_ptr&1 ) scratch_ptr++;
 		// check for room :
-		REQUIRE_FUZZ_RETURN( scratch_ptr+2*num_off16s <= scratch_end, -1 );
+		REQUIRE_FUZZ_RETURN( 2*(SINTa)num_off16s <= rrPtrDiff( scratch_end - scratch_ptr ), -1 );
 		arrays->off16_ptr = scratch_ptr;
 		scratch_ptr += 2 * num_off16s;
 		
@@ -3686,7 +3692,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 	}
 	else
 	{
-		REQUIRE_FUZZ_RETURN( comp_ptr+2*num_off16s <= comp_end, -1 );
+		REQUIRE_FUZZ_RETURN( 2*(SINTa)num_off16s <= rrPtrDiff( comp_end - comp_ptr ), -1 );
 		
 		if ( inplace_comp_raw_overlap )
 		{
@@ -3711,7 +3717,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 	//---------------------------------------------------
 	// get off24's :
 		
-	REQUIRE_FUZZ_RETURN( comp_ptr+3 <= comp_end, -1 );
+	REQUIRE_FUZZ_RETURN( 3 <= rrPtrDiff( comp_end - comp_ptr ), -1 );
 	
 	U32 off24_header = RR_GET24_LE_NOOVERRUN(comp_ptr);
 	comp_ptr += 3;	
@@ -3729,7 +3735,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 		
 		SINTa scratch_bytes_needed = sizeof(U32)*NEWLZF_ESCAPE_OFFSET_PAD_ZERO_COUNT;
 		
-		REQUIRE_FUZZ_RETURN( (scratch_ptr + scratch_bytes_needed) <= scratch_end, -1 );
+		REQUIRE_FUZZ_RETURN( scratch_bytes_needed <= rrPtrDiff( scratch_end - scratch_ptr ), -1 );
 		
 		memset(scratch_ptr,0,scratch_bytes_needed);
 		scratch_ptr += scratch_bytes_needed;
@@ -3742,13 +3748,13 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 		// extremely unlikely excess case :
 		if ( off24_ptr_chunk_count1 == 0xFFF )
 		{
-			REQUIRE_FUZZ_RETURN( comp_ptr+2 <= comp_end, -1 );
+			REQUIRE_FUZZ_RETURN( 2 <= rrPtrDiff( comp_end - comp_ptr ), -1 );
 			off24_ptr_chunk_count1 = RR_GET16_LE_UNALIGNED(comp_ptr);
 			comp_ptr += 2;
 		}
 		if ( off24_ptr_chunk_count2 == 0xFFF )
 		{
-			REQUIRE_FUZZ_RETURN( comp_ptr+2 <= comp_end, -1 );
+			REQUIRE_FUZZ_RETURN( 2 <= rrPtrDiff( comp_end - comp_ptr ), -1 );
 			off24_ptr_chunk_count2 = RR_GET16_LE_UNALIGNED(comp_ptr);
 			comp_ptr += 2;
 		}
@@ -3764,7 +3770,7 @@ static SINTa newLZF_decode_chunk_phase1(int chunk_type,const U8 * comp,const U8 
 		SINTa scratch_bytes_needed = sizeof(U32)*(off24_ptr_chunk_count1 + off24_ptr_chunk_count2 +
 			2 * NEWLZF_ESCAPE_OFFSET_PAD_ZERO_COUNT );
 		
-		REQUIRE_FUZZ_RETURN( (scratch_ptr + scratch_bytes_needed) <= scratch_end, -1 );
+		REQUIRE_FUZZ_RETURN( scratch_bytes_needed <= rrPtrDiff( scratch_end - scratch_ptr ), -1 );
 		
 		scratch_ptr = rrAlignUpPointer(scratch_ptr,4);
 		arrays->escape_offsets1 = (U32 *)scratch_ptr;
@@ -4191,8 +4197,7 @@ S32 Mermaid_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 qua
 		SINTa chunk_len = RR_MIN( newlz_chunk_len , (rawEnd - rawPtr) );
 		SINTa chunk_pos = rrPtrDiff( rawPtr - U8_void(decomp) ) + pos_since_reset;
 		
-		//if ( compPtr+4 >= compEnd ) // BUG was this
-		if ( compPtr+4 > compEnd )
+		if ( 4 > rrPtrDiff( compEnd - compPtr ) )
 			return -1;
 		
 		SINTa chunk_comp_len = RR_GET24_BE_OVERRUNOK(compPtr);
@@ -4207,11 +4212,11 @@ S32 Mermaid_DecodeOneQuantum(U8 * decomp,U8 * decomp_end,const U8 * comp,S32 qua
 			compPtr += 3;
 			
 			rrPrintf_v2("CHUNK : %d : %d\n",chunk_len,chunk_comp_len);
-		
+
+			if ( chunk_comp_len > compEnd - compPtr )
+				return -1;
 
 			const U8 * chunk_comp_end = compPtr + chunk_comp_len;
-			if ( chunk_comp_end > compEnd )
-				return -1;
 		
 			if ( chunk_comp_len >= chunk_len )
 			{

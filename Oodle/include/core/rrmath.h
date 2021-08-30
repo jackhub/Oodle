@@ -16,14 +16,7 @@ RR_NAMESPACE_START
 
 CB : math helpers
 
-todo : there's good stuff in radmath.h , move some of that over
-
 for little single float & int math routines
-
-not the place to stick a matrix library or whatever complex juju
-
-
-probably some things should get moves to rrMath.inl to clean up this header
 
 **/
 
@@ -95,14 +88,12 @@ F64 rrlog2_F64( F64 X );
 F32 rrlog2_U32_approx( U32 x );
 F32 rrlog2_U64_approx( U64 x );
 
+U32 rrIlog2roundf(F32 val);
+
 // inlines below :
 //U32 rrIlog2floor(U32 val);
 //U32 rrIlog2ceil (U32 val);
-U32 rrIlog2round(U32 val);
-
-U32 rrIlog2floorf(F32 val);
-U32 rrIlog2ceilf(F32 val);
-U32 rrIlog2roundf(F32 val);
+//U32 rrIlog2round(U32 val);
 
 rrbool rr_isnan(F64 val);
 rrbool rr_isnan_f(F32 val);
@@ -357,28 +348,15 @@ ftoi : truncates ; eg. fractions -> 0
 */
 static RADINLINE S32 rr_ftoi_trunc(const F32 f)
 {
+    /*
     #ifdef __RADNT__
-
-    // plain old C cast is actually fast with /QIfist
-    //  the only problem with that is if D3D or anyone changes the FPU settings
-    
-    // @@ URG - Edit & Continue fucks this up somehow, it blows up something in the SSE state
-    #if 0 //def _DEBUG
-    
-    return (S32)f;
-    
-    #else
-    
-    // SSE single scalar cvtt is not as fast but is reliable :
+    // SSE single scalar cvtt to avoid rounding mode issues ?
     return _mm_cvtt_ss2si( _mm_set_ss( f ) );
-    
-    #endif // _DEBUG
-    
-    #else
-    
-    return (S32) f;
-    
     #endif
+    */
+
+    // just C cast :
+    return (S32) f;
 }
 
 static RADINLINE S32 rr_ftoi_round(const F32 val)
@@ -502,10 +480,9 @@ static RADINLINE U32 rrIlog2ceil(U32 val)
 
 	if ( val <= 1 ) return 0;
 	else
-	{	
-		U32 arg = val-1;
-    
-		U32 ret = rrGetBitLevel_V_NonZero( arg );
+	{
+        // clz :
+		U32 ret = rrGetBitLevel_V_NonZero( val-1 );
 	
 		RR_ASSERT( (1U<<ret) >= val );
 		RR_ASSERT( ret == 0 || (1U<<(ret-1)) < val );
@@ -520,6 +497,11 @@ static RADINLINE U32 rrIlog2floor(U32 val)
 	//if ( ! rrIsPow2(val) ) ret--;
 	ret -= !rrIsPow2(val);
 	return ret;
+}
+
+static RADINLINE U32 rrIlog2round(U32 val)
+{
+    return rrIlog2roundf( (F32)val );
 }
 
 //=======================================================

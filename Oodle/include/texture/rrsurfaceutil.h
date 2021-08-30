@@ -56,6 +56,9 @@ void rrSurface_AllocCopy_MirrorExtended_Pad4(rrSurface * to,const rrSurface *fro
 // BGR -> RGB and such
 void rrSurface_SwapRB(rrSurface * surf);
 
+// Blit F32 to F16 with clamping to F16 range
+rrbool rrSurface_BlitF32toF16_Clamped(rrSurface * to_surf,const rrSurface *fm_surf);
+
 // alpha_mode = 0/1 = force alpha off/on
 // alpha_mode = anything else (2) = detect alpha
 // returns bool if has alpha
@@ -185,41 +188,48 @@ F64 rrSurface_GetMSE8BitEquivalent(
 void rrSurface_DoLinLog_Exposure(rrSurface * surf, F32 median, F32 exposure_multiplier);  
 F32 rrSurface_DoLinLog_Exposure_GetMedian(const rrSurface * surf);
 
+// rrSurface_Reinhard_Unreal_Tonemap
+// output values are in U8 scale [0,255]
+// and already in sRGB , do NOT gamma correct
+// just Blit_NonNormalized to U8
+void rrSurface_Reinhard_Unreal_Tonemap(rrSurface * surf, F32 median, F32 exposure_multiplier);
+
 // For float images: SSD on the bits of a half-float number
-F64 rrSurface_GetF16BitsSSD_RGBA(
+F64 rrSurface_GetF16BitsSSD_RGBA_Deprecated(
+// DON'T USE ME
 				const rrSurface * surf1,
 				const rrSurface * surf2
 				);
 
 // For float images: MSE on the bits of a half-float number
 // MSE per *pixel* not per sample
-F64 rrSurface_GetF16BitsMSE_RGBA(
+// DON'T USE ME
+F64 rrSurface_GetF16BitsMSE_RGBA_Deprecated(
 				const rrSurface * surf1,
 				const rrSurface * surf2
 				);
 
 // For float images: mean relative square error
-F64 rrSurface_GetMRSE(
+// DON'T USE ME
+F64 rrSurface_GetMRSE_Deprecated(
 				const rrSurface * surf1,
 				const rrSurface * surf2
 				);
 
 // For float images: mean relative sum of squares error
+// THIS IS OKAY
 F64 rrSurface_GetMRSSE(
 				const rrSurface * surf1,
 				const rrSurface * surf2
 				);
+				
+F64 rrSurface_GetMRSSE_Neighborhood(const rrSurface * surf1, const rrSurface * surf2,int max_channels_to_diff=3);
 
 // Same as above, but with per-channel weighting factors
 F64 rrSurface_GetWeightedMRSSE(
 				const rrSurface * surf1,
 				const rrSurface * surf2,
 				const F32 weights[4]
-				);
-
-F64 rrSurface_GetLumaBlockMSDS(
-				const rrSurface * surf,
-				int xoff =0, int yoff = 0
 				);
 
 void rrSurface_MultAdd(rrSurface * surf, const rrColor4F & multiplier, const rrColor4F & adder );

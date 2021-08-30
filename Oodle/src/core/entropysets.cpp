@@ -65,13 +65,6 @@ you should prefer adding A to the latter !!
 
 
 // invSum is (1<<ENTROPYSET_INVSUM_SHIFT)/sum
-#define ENTROPYSET_INVSUM_SHIFT	30
-//#define ENTROPYSET_INVSUM_SHIFT	RR_LOG2TABLE_SIZE_SHIFT // can't do this because histo sum can exceed that
-// could avoid the shift by using a mulhi with this :
-//#define ENTROPYSET_INVSUM_SHIFT	(32+RR_LOG2TABLE_SIZE_SHIFT)
-
-
-// invSum is (1<<ENTROPYSET_INVSUM_SHIFT)/sum
 //	returns bits , scaled by ENTROPYSET_CODELEN_ONE_BIT
 // using RR_LOG2TABLE_SIZE_SHIFT instead of ENTROPYSET_INVSUM_SHIFT would be a little faster
 static RADFORCEINLINE int simple_codelen_30( U32 count, U32 invSum )
@@ -95,7 +88,20 @@ static RADFORCEINLINE int simple_codelen_30( U32 count, U32 invSum )
 	cl = cl >> LOG2TABLED_TO_ENTROPYSET_CODELEN_SHIFT;
 	// round? appears to be slightly worse
 	//cl = (cl + (1<<(LOG2TABLED_TO_ENTROPYSET_CODELEN_SHIFT-1))-1 ) >> LOG2TABLED_TO_ENTROPYSET_CODELEN_SHIFT;
+
+#if defined(__clang__) && defined(__RADX86__)
+	// Clang on x86 targets compiles the MIN into a branchy construct which gives
+	// terrible perf for this use case. (>2x slowdown for entropysets_order0_codelen_bits)
+	__asm__(
+		"cmpl		%[maxv], %[cl]\n"
+		"cmovg		%[maxv], %[cl]\n"
+		: [cl]"+r"(cl)
+		: [maxv]"r"(ENTROPYSET_SYM_PRESENT_MAX_CL)
+	);
+#else
 	cl = RR_MIN(ENTROPYSET_SYM_PRESENT_MAX_CL,cl);
+#endif
+
 	return cl;
 }
 
@@ -119,30 +125,13 @@ static void histo_to_codelens_simple(const Histo256 & histo,SINTa histo_sum,
 
 	U32 invSum = (1<<ENTROPYSET_INVSUM_SHIFT) / (U32)histo_sum;
 	
-	/*
-	
 	for LOOP(s,256)
 	{
 		U32 count = histo.counts[s];
-		int cl = simple_codelen_30(count,invSum);
-		codelens.codelen[s] = U16_check(cl);
-	}	
-	
-	/*/
-	
-	// fill with ENTROPYSET_SYM_NOT_PRESENT_CL for count == 0 :
-	//SloppyMemset_U16(codelens.codelen,ENTROPYSET_SYM_NOT_PRESENT_CL,256*sizeof(U16));
-
-	for LOOP(s,256)
-	{
-		U32 count = histo.counts[s];
-		//if ( count == 0 ) continue;
 		int cl = simple_codelen_30(count,invSum);
 		RR_ASSERT( count > 0 || cl == ENTROPYSET_SYM_NOT_PRESENT_CL );
 		codelens.codelen[s] = U16_check(cl);
 	}
-	
-	/**/	
 }	
 	
 S32 entropysets_self_codelen(const Histo256 & histo,SINTa histo_sum)
@@ -159,10 +148,10 @@ S32 entropysets_self_codelen(const Histo256 & histo,SINTa histo_sum)
 	for LOOP(s,256)
 	{
 		U32 count = histo.counts[s];
-		//if ( count == 0 ) continue; // NOTE(fg): costs more than it saves
 		int cl = simple_codelen_30(count,invSum);
 		clSum += cl * count;
 	}	
+
 	return clSum;
 }	
 
@@ -177,7 +166,9 @@ U32 entropysets_order0_codelen_bits(const Histo256 & histo,SINTa sumCounts)
 	// rrCodeLenOfHistogramTis in bits, total
 	//  prefer my version of this - entropysets_self_codelen
 	//U32 cl1 = (U32) rrCodeLenOfHistogramT(histo.counts,256,(U32)sumCounts);
-	
+
+	// NOTE: SSE4 version in entropysets_sse4.cpp!
+
 	U32 cl2 = entropysets_self_codelen(histo,sumCounts);
 	cl2 >>= ENTROPYSET_CODELEN_ONE_BIT_SHIFT;
 	
@@ -695,6 +686,20 @@ void make_lazy_merge_candidate(lazy_merge_candidate & out_merge_candidate,
 	}
 }
 
+histo_cost_bits_func_type * entropysets_order0_codelen_bits_cpudetect()
+{
+#if defined(DO_SSE4_ALWAYS)
+	return entropysets_order0_codelen_bits_sse4;
+#elif defined(DO_SSE4_TEST)
+	if ( newlz_simd_has_sse4() )
+		return entropysets_order0_codelen_bits_sse4;
+	else
+		return entropysets_order0_codelen_bits;
+#else
+	// If we don't have anything more specialized, use the default
+	return entropysets_order0_codelen_bits;
+#endif
+}
 
 void merge_entropysets(
 	vector_a<entropyset> & histos,
@@ -731,7 +736,7 @@ void merge_entropysets(
 	merge_heap_vec.resize( merge_heap_vec_init_size );
 	lazy_merge_candidate * merge_heap = merge_heap_vec.data();
 	SINTa merge_heap_size = 0;
-	
+
 	for(int i=0;i<histos_initial_count;i++)
 	{
 		for(int j=i+1;j<histos_initial_count;j++)

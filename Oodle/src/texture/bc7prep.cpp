@@ -5,7 +5,7 @@
 // of this source file is governed by such agreement.
 
 #include "bc7prep.h"
-#include "../texturert/bc7prep_format.h"
+#include "bc7prep_format.h"
 #include "bc67format.h"
 #include "rrmem.h"
 #include "histogram.h"

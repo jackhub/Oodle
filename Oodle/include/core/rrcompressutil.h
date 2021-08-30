@@ -43,8 +43,9 @@ to == from is not okay
 
 **/
 	
-//S32 normalize_counts(U32 * to, const U32 * from, int alphabet, int to_sum_desired);
-S32 normalize_counts(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet);
+S32 normalize_counts_v5(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet);
+S32 normalize_counts_v6(U32 * to, int to_sum_desired, const U32 * from, int from_sum, int alphabet);
+#define normalize_counts_current	normalize_counts_v6
 // normalize_counts returns num_non_zero
 
 // from is [alphabet] , to is [alphabet+1] , to[0] = 0 and to[alphabet] = sum

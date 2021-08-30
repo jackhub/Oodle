@@ -108,6 +108,11 @@ typedef enum e_rrPixelFormat
 {
 	rrPixelFormat_Invalid = 0,
 
+	// the rrPixelFormat_3_U8 and rrPixelFormat_4_U8 formats are BGRA order
+	// 	   (2_U8 is RG)
+	//	all other simple _N_ formats are RGBA order
+
+
 	rrPixelFormat_1_U8 = RR_MAKE_PIXELFORMAT_SIMPLE(1,RR_PIXELFORMAT_TYPE_U8) ,
 	rrPixelFormat_2_U8 = RR_MAKE_PIXELFORMAT_SIMPLE(2,RR_PIXELFORMAT_TYPE_U8) ,
 	rrPixelFormat_3_U8 = RR_MAKE_PIXELFORMAT_SIMPLE(3,RR_PIXELFORMAT_TYPE_U8) , // BGR

@@ -13,53 +13,209 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Source Files\texture">
-      <UniqueIdentifier>{04292718-9050-428f-868b-a1715f1877c7}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\base">
-      <UniqueIdentifier>{32fe1fb1-9fa5-46b5-9b5c-9b564e741100}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\core">
-      <UniqueIdentifier>{4380a026-41cd-48ab-9e2e-7e6aca0789a4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\network">
-      <UniqueIdentifier>{0740375e-7775-49e6-888f-4fd9a7efcaac}</UniqueIdentifier>
+    <Filter Include="Header Files\texture">
+      <UniqueIdentifier>{5fc53adf-9b5a-4883-a3f8-c0c8b8035afa}</UniqueIdentifier>
     </Filter>
     <Filter Include="Asm">
-      <UniqueIdentifier>{9608a309-6e04-474e-b3d5-75828b43d71a}</UniqueIdentifier>
+      <UniqueIdentifier>{28d52b57-79aa-4a28-97c3-c078fad7bb50}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\base">
-      <UniqueIdentifier>{b0e024df-7a94-42cf-bb5f-0ecd96700a7e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\core">
-      <UniqueIdentifier>{3e89da32-a53b-4aa9-9386-ddc6b4643e84}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\network">
-      <UniqueIdentifier>{a33d3d67-ea81-4455-a95d-b1247a564088}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\texture">
-      <UniqueIdentifier>{dfabe94a-5d91-41e1-a487-4682ec15781d}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\core\public">
-      <UniqueIdentifier>{b37f8e52-162c-495b-9235-3f8687474fc1}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\core\templates">
-      <UniqueIdentifier>{cc6a24a7-f1b2-4fe3-a31a-4c4708bbb2a6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\core\templates">
-      <UniqueIdentifier>{157a559f-19c4-4dbf-b4eb-2acda1f451bc}</UniqueIdentifier>
+    <Filter Include="Source Files\texture">
+      <UniqueIdentifier>{61afd423-6a7b-43b7-b545-71313e78721b}</UniqueIdentifier>
     </Filter>
     <Filter Include="Asm\core">
-      <UniqueIdentifier>{36a17c9a-bb18-4505-8cce-14810bf8cea2}</UniqueIdentifier>
+      <UniqueIdentifier>{80e452fe-effd-4caf-bf99-71a322ce3f2b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Asm\network">
-      <UniqueIdentifier>{54aebb54-82ba-408a-9088-8f5ca7bfaf0c}</UniqueIdentifier>
+    <Filter Include="Source Files\network">
+      <UniqueIdentifier>{827718c8-c46b-45db-ba80-19629d82346d}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Asm\texture">
-      <UniqueIdentifier>{12e7f896-57b9-450e-8101-150392573ea4}</UniqueIdentifier>
+    <Filter Include="Header Files\network">
+      <UniqueIdentifier>{f823e88c-4a0f-4c03-b33a-188cd142926e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\base">
+      <UniqueIdentifier>{c1c7243e-ec2d-459d-92ff-3a8ef108eb53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\core">
+      <UniqueIdentifier>{c1a4d58d-0d09-4f20-81eb-de345586ca57}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\core\public">
+      <UniqueIdentifier>{ee48565a-f558-4ad9-8b0a-ff33db8f4878}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\core\templates">
+      <UniqueIdentifier>{a576f8f6-7930-4211-b08f-2bcc838e2cfa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\base">
+      <UniqueIdentifier>{6c9460cc-1094-44bf-8326-3dc3ac69c8be}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\core">
+      <UniqueIdentifier>{b3e546e1-dd2e-43e0-bcf5-6e6a9066c953}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\core\templates">
+      <UniqueIdentifier>{9e260279-34ce-48c7-913d-81ff3fbfbcf3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\network\oodlestaticlzp.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\oonet2.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\rrarithcoder.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\rrtans.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\oodle2netpub.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\oodlenetplugins_gen.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\oodlenetworkversion.h">
+      <Filter>Header Files\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\blocksurface.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\layout.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\linalg.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\oodletexplugins_gen.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\oodletexpub.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\oodletexpubrrs.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\oodletextureversion.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\perceptualactivity.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrblock8x8util.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrcolor.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrcolorfunctors.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrcolorvecc.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxt1vq.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxt1vqhelp.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxtcblock.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxtccompress.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxtcenums.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxtcompresshelp.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrdxtcrd.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrfixedfloat.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrmat3.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrpixelformat.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurface.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfacebc67.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfaceblit.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfaceblitfastimpl.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfacedxtc.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfacefilters.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfacejobslicer.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfacerowcache.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrsurfaceutil.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrvecc.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\rrveccutil.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\texbase.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc4compress.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc4rd.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc6compress.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc6compress_internal.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc6rd.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7bits.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7compress.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7compress_internal.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7decode_fast.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7prep.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc7rd.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc67format.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\texture\bc67tables.h">
+      <Filter>Header Files\texture</Filter>
+    </ClInclude>
     <ClInclude Include="include\base\oo2basepub.h">
       <Filter>Header Files\base</Filter>
     </ClInclude>
@@ -69,17 +225,53 @@
     <ClInclude Include="include\base\oo2baseinc.h">
       <Filter>Header Files\base</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\log2table.h">
-      <Filter>Header Files\core</Filter>
+    <ClInclude Include="include\core\public\oodle_platform.h">
+      <Filter>Header Files\core\public</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\longrangematcher.h">
-      <Filter>Header Files\core</Filter>
+    <ClInclude Include="include\core\templates\rrvector.h">
+      <Filter>Header Files\core\templates</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\lrminternal.h">
-      <Filter>Header Files\core</Filter>
+    <ClInclude Include="include\core\templates\rrvector_a.h">
+      <Filter>Header Files\core\templates</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\lzasserts.h">
-      <Filter>Header Files\core</Filter>
+    <ClInclude Include="include\core\templates\rrvector_flex.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrvector_s.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrvector_st.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrvector_t.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrvector_util.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\chunkstack.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rralgorithm.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrhashfunction.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrhashtable.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrnew.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrpool.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrscopedptr.h">
+      <Filter>Header Files\core\templates</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\templates\rrstl.h">
+      <Filter>Header Files\core\templates</Filter>
     </ClInclude>
     <ClInclude Include="include\core\lzb.h">
       <Filter>Header Files\core</Filter>
@@ -109,6 +301,9 @@
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="include\core\newlz_complexliterals.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\newlz_decoder.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
     <ClInclude Include="include\core\newlz_histo.h">
@@ -303,6 +498,9 @@
     <ClInclude Include="include\core\ctmf.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
+    <ClInclude Include="include\core\eastl_heap.h">
+      <Filter>Header Files\core</Filter>
+    </ClInclude>
     <ClInclude Include="include\core\entropysets.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
@@ -312,75 +510,248 @@
     <ClInclude Include="include\core\histogram_asm.h">
       <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\public\oodle_platform.h">
-      <Filter>Header Files\core\public</Filter>
+    <ClInclude Include="include\core\log2table.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrstl.h">
-      <Filter>Header Files\core\templates</Filter>
+    <ClInclude Include="include\core\longrangematcher.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector.h">
-      <Filter>Header Files\core\templates</Filter>
+    <ClInclude Include="include\core\lrminternal.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_a.h">
-      <Filter>Header Files\core\templates</Filter>
+    <ClInclude Include="include\core\lzasserts.h">
+      <Filter>Header Files\core</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_flex.h">
-      <Filter>Header Files\core\templates</Filter>
+    <ClInclude Include="include\texture\bc7prep_format.h">
+      <Filter>Header Files\texture</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_s.h">
-      <Filter>Header Files\core\templates</Filter>
+    <ClInclude Include="include\texture\oodle2texint.h">
+      <Filter>Header Files\texture</Filter>
     </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_st.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_t.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrvector_util.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\chunkstack.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rralgorithm.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrhashfunction.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrhashtable.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrnew.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrpool.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\core\templates\rrscopedptr.h">
-      <Filter>Header Files\core\templates</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\oodlenetplugins_gen.h">
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="include\network\rrarithcoder.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\oodlenetworkversion.h">
+    </None>
+    <None Include="include\network\rrtans.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\oodlestaticlzp.h">
+    </None>
+    <None Include="include\network\arith_nosbvaluecoder.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\oonet2.h">
+    </None>
+    <None Include="include\network\arith_o0.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\rrarithcoder.h">
+    </None>
+    <None Include="include\network\arith_o1.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\rrtans.h">
+    </None>
+    <None Include="include\network\arith_o1scontext.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\oodle2netpub.h">
+    </None>
+    <None Include="include\network\arith_o1symbolranker.inl">
       <Filter>Header Files\network</Filter>
-    </ClInclude>
+    </None>
+    <None Include="include\network\arith_symbolranker.inl">
+      <Filter>Header Files\network</Filter>
+    </None>
+    <None Include="include\network\oodlenetplugins_gen.inc">
+      <Filter>Header Files\network</Filter>
+    </None>
+    <None Include="include\texture\oodletexplugins_gen.inc">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\perceptualactivity.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\rrdxt1vqhelp.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\rrdxtccompress.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\vec128.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\vec256.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="include\texture\bc7decode_fast_common.inl">
+      <Filter>Header Files\texture</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_cortex_a57.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_wide.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_x64_bmi2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_x64_generic.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_x64_zen2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff6_x86_sse2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huffx64_bmi2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huffx64_generic.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huffx64_jaguar.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huffx86_sse2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans_cortex_a57.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans_wide.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans_x64_bmi2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans_x64_generic.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_tans_x64_jaguar.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\x64_wc_probe.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\enchuff3_x64_bmi2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\enchuff3_x64_generic.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\enchuff3_x64_jaguar.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\enchuff3c.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\histo.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\histo_x64_generic.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_decoffs44.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_decoffsalt.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff_x64_zen2.nas">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff3.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff3_cortex_a57.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="asm\core\newlz_huff3_wide.a64.S">
+      <Filter>Asm\core</Filter>
+    </None>
+    <None Include="include\core\lzb_decode_inner.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\lzb_decode_inner2.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\lzb_fast.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\lzb_fast_generic.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\lzb_fast_normal.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\lzb_vfast.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_arrays.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_block_coders.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_decode_parse_inner.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_decode_parse_outer.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_huff_common.inc">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_rle_escape_packet.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlz_tans.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlzf_decode_parse_outer.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlzf_escape_packet.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlzhc_decode_parse_inner.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\newlzhc_decode_parse_outer.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\oodlecoreplugins_gen.inc">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\oodlejob.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\oodlejobobject_generator.inc">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\rrhuffman.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\rrlz_getmatchlen.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\rrsort.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\sloppymemset.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\suffixtrie2.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\asmlib_arm_a64.inc">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\asmlib_x86_x64.inc">
+      <Filter>Header Files\core</Filter>
+    </None>
+    <None Include="include\core\goldensearch.inl">
+      <Filter>Header Files\core</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\network\rrarithcoder.cpp">
@@ -398,11 +769,164 @@
     <ClCompile Include="src\network\oonet2.cpp">
       <Filter>Source Files\network</Filter>
     </ClCompile>
+    <ClCompile Include="src\texture\oodletexpub.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\oodletexpubrrs.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\perceptualactivity.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrblock8x8util.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrcolor.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrcolorfunctors.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrcolorvecc.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxt1vq.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxt1vqhelp.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxtcblock.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxtccompress.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxtcenums.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxtcompresshelp.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrdxtcrd.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrfixedfloat.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrmat3.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrpixelformat.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurface.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfacebc67.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfaceblit.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfaceblitfastimpl.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfacedxtc.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfacefilters.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfacejobslicer.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfacerowcache.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrsurfaceutil.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrvecc.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\rrveccutil.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\texbase.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc4compress.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc4rd.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc6compress.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc6rd.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7bits.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7compress.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7decode_fast.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7decode_fast_avx2.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7prep.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc7rd.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc67format.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc67tables.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\bc67tables_generated.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\blocksurface.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\layout.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\texture\linalg.cpp">
+      <Filter>Source Files\texture</Filter>
+    </ClCompile>
     <ClCompile Include="src\base\oo2baseinc.cpp">
       <Filter>Source Files\base</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\lzasserts.cpp">
-      <Filter>Source Files\core</Filter>
+    <ClCompile Include="src\core\templates\rrpool.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrscopedptr.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrvector.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrvector_a.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrhashfunction.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrhashtable.cpp">
+      <Filter>Source Files\core\templates</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\templates\rrnew.cpp">
+      <Filter>Source Files\core\templates</Filter>
     </ClCompile>
     <ClCompile Include="src\core\lzb.cpp">
       <Filter>Source Files\core</Filter>
@@ -453,6 +977,9 @@
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="src\core\newlz_speedfit.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\newlz_sse4.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="src\core\newlz_tans.cpp">
@@ -593,7 +1120,13 @@
     <ClCompile Include="src\core\entropysets.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
+    <ClCompile Include="src\core\entropysets_sse4.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
     <ClCompile Include="src\core\histogram.cpp">
+      <Filter>Source Files\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\linux_symver.c">
       <Filter>Source Files\core</Filter>
     </ClCompile>
     <ClCompile Include="src\core\log2table.cpp">
@@ -602,229 +1135,8 @@
     <ClCompile Include="src\core\longrangematcher.cpp">
       <Filter>Source Files\core</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\templates\rrpool.cpp">
-      <Filter>Source Files\core\templates</Filter>
+    <ClCompile Include="src\core\lzasserts.cpp">
+      <Filter>Source Files\core</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\templates\rrscopedptr.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\templates\rrvector.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\templates\rrvector_a.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\templates\rrhashfunction.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\templates\rrhashtable.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\templates\rrnew.cpp">
-      <Filter>Source Files\core\templates</Filter>
-    </ClCompile>
-    <ClCompile Include="asm\core\linux_symver.c">
-      <Filter>Asm\core</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="asm\core\lzb_vfast.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_arrays.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_block_coders.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_decode_parse_inner.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_decode_parse_outer.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_decoffs44.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_decoffsalt.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff_common.inc">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff_x64_zen2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff3.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff3_cortex_a57.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff3_wide.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_cortex_a57.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_wide.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_x64_bmi2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_x64_generic.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_x64_zen2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huff6_x86_sse2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huffx64_bmi2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huffx64_generic.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huffx64_jaguar.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_huffx86_sse2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_rle_escape_packet.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans_cortex_a57.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans_x64_bmi2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans_x64_generic.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlz_tans_x64_jaguar.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlzf_decode_parse_outer.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlzf_escape_packet.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlzhc_decode_parse_inner.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\newlzhc_decode_parse_outer.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\oodlecoreplugins_gen.inc">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\oodlejob.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\oodlejobobject_generator.inc">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\rrhuffman.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\rrlz_getmatchlen.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\rrsort.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\sloppymemset.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\suffixtrie2.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\x64_wc_probe.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\asmlib_arm_a64.inc">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\asmlib_x86_x64.inc">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\enchuff3_x64_bmi2.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\enchuff3_x64_generic.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\enchuff3_x64_jaguar.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\enchuff3c.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\goldensearch.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\histo.a64.S">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\histo_x64_generic.nas">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\lzb_decode_inner.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\lzb_decode_inner2.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\lzb_fast.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\lzb_fast_generic.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\core\lzb_fast_normal.inl">
-      <Filter>Asm\core</Filter>
-    </None>
-    <None Include="asm\network\arith_o1scontext.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\arith_o1symbolranker.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\arith_symbolranker.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\oodlenetplugins_gen.inc">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\rrarithcoder.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\rrtans.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\arith_nosbvaluecoder.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\arith_o0.inl">
-      <Filter>Asm\network</Filter>
-    </None>
-    <None Include="asm\network\arith_o1.inl">
-      <Filter>Asm\network</Filter>
-    </None>
   </ItemGroup>
 </Project>

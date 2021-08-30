@@ -18,6 +18,7 @@ bool BC6_RD(BlockSurface * to_blocks,
 	const BlockSurface * baseline_blocks,
 	const BlockSurface * activity_blocks,
 	int lambda,
-	rrDXTCOptions options);
+	rrDXTCOptions options,
+	const rrDXTCRD_Options & rdopts);
 
 RR_NAMESPACE_END

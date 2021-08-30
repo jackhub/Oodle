@@ -10,6 +10,12 @@
 
 OODLE_NS_START
 
+enum JacobiSort
+{
+    JACOBI_NO_SORT,
+    JACOBI_SORT_DESCENDING_ABS,
+};
+
 // NOTE: as of this writing (Jun 2019), everything in here
 // is intended for fairly small matrices (maybe 20x20 max).
 //
@@ -42,6 +48,14 @@ bool LinAlg_CholeskyUTU(F32 * A, int dim);
 // This is the factorization returned by LinAlg_CholeskyUTU.
 // The remaining elements of matrix are ignore.
 void LinAlg_CholeskySolve(const F32 * matrix, int dim, F32 * b);
+
+// Compute the eigenvalues `evals` and eigenvectors `evecs` for a real
+// row-major symmetrix dim*dim matrix, `A`. ie. Solve:
+//
+//   D = V^T A V
+//
+// Returns the number of rotations performed.
+int LinAlg_Jacobi(F32 * evals, F32 * evecs, const F32 * A, int dim, JacobiSort sort = JACOBI_SORT_DESCENDING_ABS);
 
 OODLE_NS_END
 
