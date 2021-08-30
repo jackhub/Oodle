@@ -5,8 +5,8 @@ Oodle src extracted from Unreal Engine.
 
 * **OodleCore (oo2core_9_)**: compiles a dll with oodle compression/decompression functions
 * **OodleNetwork (oo2net_9_)**: compiles a dll with oodle compression/decompression functions + net related functions
-* **OodleTexture (oo2tex_9_)**: compiles a dll with oodle compression/decompression functions + texture compression related functions
-* **OodleNetworkAndTexture (oo2netex_9_)**: compiles a dll with oodle compression/decompression functions + net related functions + texture compression related functions
+* **OodleTexture (oo2tex_9_)**: compiles a dll with oodle compression/decompression functions + texture compression related functions (TODO)
+* **OodleNetworkAndTexture (oo2netex_9_)**: compiles a dll with oodle compression/decompression functions + net related functions + texture compression related functions (TODO)
 
 # Exported Functions
 
