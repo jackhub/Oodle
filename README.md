@@ -117,6 +117,6 @@ Oodle src extracted from Unreal Engine.
  ## oo2netex_9_ : oo2core_9_ + oo2net_9_ + oo2tex_9_
  
  # Disclaimer
- I am not affiliated, associated, authorized, endorsed by, or in any way officially connected with Epic Games Inc, RAD Game Tools or any of their subsidiaries or its affiliates. I do not own any of the the material present on this repository. 
+ I am not affiliated, associated, authorized, endorsed by, or in any way officially connected with Epic Games Inc, RAD Game Tools or any of their subsidiaries or its affiliates. I do not own any of the the material present in this repository. 
  
  For takedown request, please hit me up at contact@psychopast.me (pwease do not sue me, I have children to take care of ;( )
