@@ -5,8 +5,8 @@ Oodle src extracted from Unreal Engine.
 
 * **OodleCore (oo2core_9_)**: compiles a dll with oodle compression/decompression functions
 * **OodleNetwork (oo2net_9_)**: compiles a dll with oodle compression/decompression functions + net related functions
-* **OodleTexture (oo2tex_9_)**: compiles a dll with oodle compression/decompression functions + texture compression related functions (TODO)
-* **OodleNetworkAndTexture (oo2netex_9_)**: compiles a dll with oodle compression/decompression functions + net related functions + texture compression related functions (TODO)
+* **OodleTexture (oo2tex_9_)**: compiles a dll with oodle compression/decompression functions + texture compression related functions
+* **OodleNetworkAndTexture (oo2netex_9_)**: compiles a dll with oodle compression/decompression functions + net related functions + texture compression related functions
 
 # Exported Functions
 
@@ -86,8 +86,32 @@ Oodle src extracted from Unreal Engine.
 * OodleNetwork1_Shared_Size
 
  ## oo2tex_9_ : oo2core_9_ + 
- *
- *
- *
  
- ## oo2netex_9_ : oo2core_9_ + oo2net_9_
+* OodleTex_BC7Prep_Encode
+* OodleTex_BC7Prep_MinEncodeOutputSize
+* OodleTex_BC7Prep_MinEncodeScratchSize
+* OodleTex_BC7Prep_SetRateEstimator
+* OodleTex_BC_BytesPerBlock
+* OodleTex_BC_GetName
+* OodleTex_BC_GetNaturalDecodeFormat
+* OodleTex_BlitNormalized
+* OodleTex_DecodeBCN_Blocks
+* OodleTex_DecodeBCN_LinearSurfaces
+* OodleTex_EncodeBCN_Blocks
+* OodleTex_EncodeBCN_LinearSurfaces
+* OodleTex_EncodeBCN_RDO
+* OodleTex_EncodeBCN_RDO_Ex
+* OodleTex_Err_GetName
+* OodleTex_InstallVisualizerCallback
+* OodleTex_Layout_CopyBCNToLinear
+* OodleTex_Layout_Create
+* OodleTex_Layout_Destroy
+* OodleTex_Layout_GenerateBlockIDs
+* OodleTex_Layout_SetBlockLayout
+* OodleTex_LogVersion
+* OodleTex_PixelFormat_BytesPerPixel
+* OodleTex_PixelFormat_GetName
+* OodleTex_RDO_UniversalTiling_GetName
+* OodleTex_RMSE_Normalized_BCNAware
+ 
+ ## oo2netex_9_ : oo2core_9_ + oo2net_9_ + oo2tex_9_
