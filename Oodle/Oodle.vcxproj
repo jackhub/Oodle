@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\base\oo2baseinc.h" />
+    <ClInclude Include="include\base\oo2basepub.h" />
+    <ClInclude Include="include\base\oodlebasetypes.h" />
+    <ClInclude Include="include\core\biglog2table.h" />
+    <ClInclude Include="include\core\cbradutil.h" />
+    <ClInclude Include="include\core\cbstrutil.h" />
+    <ClInclude Include="include\core\cpux86.h" />
+    <ClInclude Include="include\core\ctmf.h" />
+    <ClInclude Include="include\core\entropysets.h" />
+    <ClInclude Include="include\core\histogram.h" />
+    <ClInclude Include="include\core\histogram_asm.h" />
+    <ClInclude Include="include\core\log2table.h" />
+    <ClInclude Include="include\core\longrangematcher.h" />
+    <ClInclude Include="include\core\lrminternal.h" />
+    <ClInclude Include="include\core\lzasserts.h" />
+    <ClInclude Include="include\core\lzb.h" />
+    <ClInclude Include="include\core\matchfinder.h" />
+    <ClInclude Include="include\core\newlz.h" />
+    <ClInclude Include="include\core\newlzf.h" />
+    <ClInclude Include="include\core\newlzf_decoder.h" />
+    <ClInclude Include="include\core\newlzhc.h" />
+    <ClInclude Include="include\core\newlzhc_decoder.h" />
+    <ClInclude Include="include\core\newlz_arrays.h" />
+    <ClInclude Include="include\core\newlz_arrays_huff.h" />
+    <ClInclude Include="include\core\newlz_arrays_rle.h" />
+    <ClInclude Include="include\core\newlz_arrays_tans.h" />
+    <ClInclude Include="include\core\newlz_block_coders.h" />
+    <ClInclude Include="include\core\newlz_block_coders_ssse3.h" />
+    <ClInclude Include="include\core\newlz_complexliterals.h" />
+    <ClInclude Include="include\core\newlz_histo.h" />
+    <ClInclude Include="include\core\newlz_multiarrays.h" />
+    <ClInclude Include="include\core\newlz_offsets.h" />
+    <ClInclude Include="include\core\newlz_shared.h" />
+    <ClInclude Include="include\core\newlz_simd.h" />
+    <ClInclude Include="include\core\newlz_speedfit.h" />
+    <ClInclude Include="include\core\newlz_subliterals.h" />
+    <ClInclude Include="include\core\newlz_tans.h" />
+    <ClInclude Include="include\core\newlz_vtable.h" />
+    <ClInclude Include="include\core\oodlebase.h" />
+    <ClInclude Include="include\core\oodleconfigvalues.h" />
+    <ClInclude Include="include\core\oodlecore.h" />
+    <ClInclude Include="include\core\oodlecoreinit.h" />
+    <ClInclude Include="include\core\oodlecoreplugins.h" />
+    <ClInclude Include="include\core\oodlecoreplugins_gen.h" />
+    <ClInclude Include="include\core\oodlehandle.h" />
+    <ClInclude Include="include\core\oodlejob.h" />
+    <ClInclude Include="include\core\oodlelzcompressors.h" />
+    <ClInclude Include="include\core\oodlelzlegacyvtable.h" />
+    <ClInclude Include="include\core\oodlelzpub.h" />
+    <ClInclude Include="include\core\oodlemalloc.h" />
+    <ClInclude Include="include\core\oodlepublicate.h" />
+    <ClInclude Include="include\core\oodleversion.h" />
+    <ClInclude Include="include\core\publicate.h" />
+    <ClInclude Include="include\core\public\oodle_platform.h" />
+    <ClInclude Include="include\core\rrarenaallocator.h" />
+    <ClInclude Include="include\core\rrbase.h" />
+    <ClInclude Include="include\core\rrbighash.h" />
+    <ClInclude Include="include\core\rrbits.h" />
+    <ClInclude Include="include\core\rrbytepacking.h" />
+    <ClInclude Include="include\core\rrcompressutil.h" />
+    <ClInclude Include="include\core\rrcppstd.h" />
+    <ClInclude Include="include\core\rrfuzztesthelper.h" />
+    <ClInclude Include="include\core\rrhashes.h" />
+    <ClInclude Include="include\core\rrhuffman.h" />
+    <ClInclude Include="include\core\rrhuffmandecode.h" />
+    <ClInclude Include="include\core\rrlinknode.h" />
+    <ClInclude Include="include\core\rrlog.h" />
+    <ClInclude Include="include\core\rrlogutil.h" />
+    <ClInclude Include="include\core\rrlzh_lzhlw_shared.h" />
+    <ClInclude Include="include\core\rrmath.h" />
+    <ClInclude Include="include\core\rrmem.h" />
+    <ClInclude Include="include\core\rrmemutil.h" />
+    <ClInclude Include="include\core\rrplatform.h" />
+    <ClInclude Include="include\core\rrprefetch.h" />
+    <ClInclude Include="include\core\rrrand.h" />
+    <ClInclude Include="include\core\rrsimpleprof.h" />
+    <ClInclude Include="include\core\rrsimpleprofstub.h" />
+    <ClInclude Include="include\core\rrsprintf.h" />
+    <ClInclude Include="include\core\rrstackarray.h" />
+    <ClInclude Include="include\core\rrvarbitcodes.h" />
+    <ClInclude Include="include\core\rrvarbits.h" />
+    <ClInclude Include="include\core\speedfitter.h" />
+    <ClInclude Include="include\core\suffixtrie.h" />
+    <ClInclude Include="include\core\suffixtriematcher.h" />
+    <ClInclude Include="include\core\templates\chunkstack.h" />
+    <ClInclude Include="include\core\templates\rralgorithm.h" />
+    <ClInclude Include="include\core\templates\rrhashfunction.h" />
+    <ClInclude Include="include\core\templates\rrhashtable.h" />
+    <ClInclude Include="include\core\templates\rrnew.h" />
+    <ClInclude Include="include\core\templates\rrpool.h" />
+    <ClInclude Include="include\core\templates\rrscopedptr.h" />
+    <ClInclude Include="include\core\templates\rrstl.h" />
+    <ClInclude Include="include\core\templates\rrvector.h" />
+    <ClInclude Include="include\core\templates\rrvector_a.h" />
+    <ClInclude Include="include\core\templates\rrvector_flex.h" />
+    <ClInclude Include="include\core\templates\rrvector_s.h" />
+    <ClInclude Include="include\core\templates\rrvector_st.h" />
+    <ClInclude Include="include\core\templates\rrvector_t.h" />
+    <ClInclude Include="include\core\templates\rrvector_util.h" />
+    <ClInclude Include="include\core\threadprofiler.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\base\oo2baseinc.cpp" />
+    <ClCompile Include="src\biglog2table.cpp" />
+    <ClCompile Include="src\cbradutil.cpp" />
+    <ClCompile Include="src\cbstrutil.cpp" />
+    <ClCompile Include="src\core\templates\rrhashfunction.cpp" />
+    <ClCompile Include="src\core\templates\rrhashtable.cpp" />
+    <ClCompile Include="src\core\templates\rrnew.cpp" />
+    <ClCompile Include="src\core\templates\rrpool.cpp" />
+    <ClCompile Include="src\core\templates\rrscopedptr.cpp" />
+    <ClCompile Include="src\core\templates\rrvector.cpp" />
+    <ClCompile Include="src\core\templates\rrvector_a.cpp" />
+    <ClCompile Include="src\cpux86.cpp" />
+    <ClCompile Include="src\ctmf.cpp" />
+    <ClCompile Include="src\entropysets.cpp" />
+    <ClCompile Include="src\histogram.cpp" />
+    <ClCompile Include="src\log2table.cpp" />
+    <ClCompile Include="src\longrangematcher.cpp" />
+    <ClCompile Include="src\lzasserts.cpp" />
+    <ClCompile Include="src\lzb.cpp" />
+    <ClCompile Include="src\newlz.cpp" />
+    <ClCompile Include="src\newlzf.cpp" />
+    <ClCompile Include="src\newlzf_sse4.cpp" />
+    <ClCompile Include="src\newlzhc.cpp" />
+    <ClCompile Include="src\newlzhc_sse4.cpp" />
+    <ClCompile Include="src\newlz_arrays.cpp" />
+    <ClCompile Include="src\newlz_arrays_huff.cpp" />
+    <ClCompile Include="src\newlz_arrays_rle.cpp" />
+    <ClCompile Include="src\newlz_arrays_tans.cpp" />
+    <ClCompile Include="src\newlz_block_coders.cpp" />
+    <ClCompile Include="src\newlz_block_coders_ssse3.cpp" />
+    <ClCompile Include="src\newlz_histo.cpp" />
+    <ClCompile Include="src\newlz_multiarrays.cpp" />
+    <ClCompile Include="src\newlz_offsets.cpp" />
+    <ClCompile Include="src\newlz_offsets_avx2.cpp" />
+    <ClCompile Include="src\newlz_offsets_sse4.cpp" />
+    <ClCompile Include="src\newlz_shared.cpp" />
+    <ClCompile Include="src\newlz_simd.cpp" />
+    <ClCompile Include="src\newlz_simd_sse4.cpp" />
+    <ClCompile Include="src\newlz_speedfit.cpp" />
+    <ClCompile Include="src\newlz_tans.cpp" />
+    <ClCompile Include="src\newlz_vtable.cpp" />
+    <ClCompile Include="src\oodlebase.cpp" />
+    <ClCompile Include="src\oodleconfigvalues.cpp" />
+    <ClCompile Include="src\oodlecore.cpp" />
+    <ClCompile Include="src\oodlecoreinit.cpp" />
+    <ClCompile Include="src\oodlecoreplugins.cpp" />
+    <ClCompile Include="src\oodlehandle.cpp" />
+    <ClCompile Include="src\oodlejob.cpp" />
+    <ClCompile Include="src\oodlelzcompressors.cpp" />
+    <ClCompile Include="src\oodlelzlegacyvtable.cpp" />
+    <ClCompile Include="src\oodlelzpub.cpp" />
+    <ClCompile Include="src\oodlemalloc.cpp" />
+    <ClCompile Include="src\oodleversion.cpp" />
+    <ClCompile Include="src\rrarenaallocator.cpp" />
+    <ClCompile Include="src\rrbase.cpp" />
+    <ClCompile Include="src\rrbighash.cpp" />
+    <ClCompile Include="src\rrbytepacking.cpp" />
+    <ClCompile Include="src\rrcompressutil.cpp" />
+    <ClCompile Include="src\rrhashes.cpp" />
+    <ClCompile Include="src\rrhuffman.cpp" />
+    <ClCompile Include="src\rrhuffmandecode.cpp" />
+    <ClCompile Include="src\rrlinknode.cpp" />
+    <ClCompile Include="src\rrlog.cpp" />
+    <ClCompile Include="src\rrlogutil.cpp" />
+    <ClCompile Include="src\rrlzh_lzhlw_shared.cpp" />
+    <ClCompile Include="src\rrmath.cpp" />
+    <ClCompile Include="src\rrmem.cpp" />
+    <ClCompile Include="src\rrmemutil.cpp" />
+    <ClCompile Include="src\rrrand.cpp" />
+    <ClCompile Include="src\rrsimpleprof.cpp" />
+    <ClCompile Include="src\rrvarbitcodes.cpp" />
+    <ClCompile Include="src\rrvarbits.cpp" />
+    <ClCompile Include="src\suffixtrie.cpp" />
+    <ClCompile Include="src\suffixtriematcher.cpp" />
+    <ClCompile Include="src\threadprofiler.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="asm\core\asmlib_arm_a64.inc" />
+    <None Include="asm\core\asmlib_x86_x64.inc" />
+    <None Include="asm\core\newlz_huff_common.inc" />
+    <None Include="asm\core\oodlecoreplugins_gen.inc" />
+    <None Include="asm\core\oodlejobobject_generator.inc" />
+    <None Include="include\core\goldensearch.inl" />
+    <None Include="include\core\lzb_decode_inner.inl" />
+    <None Include="include\core\lzb_decode_inner2.inl" />
+    <None Include="include\core\lzb_fast.inl" />
+    <None Include="include\core\lzb_fast_generic.inl" />
+    <None Include="include\core\lzb_fast_normal.inl" />
+    <None Include="include\core\lzb_vfast.inl" />
+    <None Include="include\core\newlzf_decode_parse_outer.inl" />
+    <None Include="include\core\newlzf_escape_packet.inl" />
+    <None Include="include\core\newlzhc_decode_parse_inner.inl" />
+    <None Include="include\core\newlzhc_decode_parse_outer.inl" />
+    <None Include="include\core\newlz_arrays.inl" />
+    <None Include="include\core\newlz_block_coders.inl" />
+    <None Include="include\core\newlz_decode_parse_inner.inl" />
+    <None Include="include\core\newlz_decode_parse_outer.inl" />
+    <None Include="include\core\newlz_rle_escape_packet.inl" />
+    <None Include="include\core\newlz_tans.inl" />
+    <None Include="include\core\oodlejob.inl" />
+    <None Include="include\core\rrhuffman.inl" />
+    <None Include="include\core\rrlz_getmatchlen.inl" />
+    <None Include="include\core\rrsort.inl" />
+    <None Include="include\core\sloppymemset.inl" />
+    <None Include="include\core\suffixtrie2.inl" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{ed7fa5a3-b629-4d53-8ae8-3111bd012923}</ProjectGuid>
+    <RootNamespace>Oodle</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <TargetName>oo2core_9_win32</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <TargetName>oo2core_9_win32</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <TargetName>oo2core_9_win64</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <TargetName>oo2core_9_win64</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;OODLE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir)asm\core;$(ProjectDir)include\core\templates;$(ProjectDir)include\core\public;$(ProjectDir)include\core;$(ProjectDir)include\base;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;OODLE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir)asm\core;$(ProjectDir)include\core\templates;$(ProjectDir)include\core\public;$(ProjectDir)include\core;$(ProjectDir)include\base;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;OODLE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir)asm\core;$(ProjectDir)include\core\templates;$(ProjectDir)include\core\public;$(ProjectDir)include\core;$(ProjectDir)include\base;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;OODLE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(ProjectDir)asm\core;$(ProjectDir)include\core\templates;$(ProjectDir)include\core\public;$(ProjectDir)include\core;$(ProjectDir)include\base;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
